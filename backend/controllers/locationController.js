@@ -53,7 +53,9 @@ export const searchLocation = async (req, res) => {
 
     const data = await response.json();
     const suggestions = (data || []).map((item) => ({
+      name: item.name || (item.display_name ? item.display_name.split(',')[0].trim() : 'Location'),
       displayName: item.display_name,
+      formattedAddress: item.display_name,
       latitude: parseFloat(item.lat),
       longitude: parseFloat(item.lon),
       address: item.display_name,
@@ -63,12 +65,13 @@ export const searchLocation = async (req, res) => {
       postalCode: item.address?.postcode || '',
     }));
 
-    res.json({ success: true, suggestions });
+    res.json({ success: true, data: suggestions, suggestions });
   } catch (error) {
     console.error('Location search error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to search locations. Please try typing your city name.',
+      data: [],
       suggestions: [],
     });
   }
@@ -117,21 +120,22 @@ export const reverseGeocode = async (req, res) => {
       longitude,
     };
 
-    res.json({ success: true, location });
+    res.json({ success: true, data: location, location });
   } catch (error) {
     console.error('Reverse geocode error:', error.message);
-    // Return coordinates as formatted address fallback so UI never breaks
+    const fallbackLocation = {
+      formattedAddress: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      city: '',
+      state: '',
+      country: '',
+      postalCode: '',
+      latitude,
+      longitude,
+    };
     res.json({
       success: true,
-      location: {
-        formattedAddress: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        city: '',
-        state: '',
-        country: '',
-        postalCode: '',
-        latitude,
-        longitude,
-      },
+      data: fallbackLocation,
+      location: fallbackLocation,
     });
   }
 };
@@ -194,9 +198,15 @@ export const getDirections = async (req, res) => {
     res.json({
       success: true,
       distanceKm,
+      durationMin: durationMinutes,
       durationMinutes,
       durationFormatted: formatDuration(durationMinutes),
       coordinates: primaryRoute.geometry.coordinates, // Array of [lng, lat] along road network
+      route: {
+        type: 'Feature',
+        properties: { distanceKm, durationMinutes },
+        geometry: primaryRoute.geometry,
+      },
       summary: primaryRoute.legs?.[0]?.summary || '',
       isFallback: false,
     });
@@ -209,12 +219,24 @@ export const getDirections = async (req, res) => {
     res.json({
       success: true,
       distanceKm,
+      durationMin: durationMinutes,
       durationMinutes,
       durationFormatted: formatDuration(durationMinutes),
       coordinates: [
         [sLng, sLat],
         [eLng, eLat],
       ],
+      route: {
+        type: 'Feature',
+        properties: { distanceKm, durationMinutes },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [sLng, sLat],
+            [eLng, eLat],
+          ],
+        },
+      },
       summary: 'Direct route estimate',
       isFallback: true,
     });
