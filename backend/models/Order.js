@@ -3,8 +3,10 @@ import mongoose from 'mongoose';
 const VALID_TRANSITIONS = {
   pending: ['accepted', 'cancelled'],
   accepted: ['processing', 'cancelled'],
-  processing: ['shipped', 'cancelled'],
-  shipped: ['delivered'],
+  processing: ['packed', 'shipped', 'cancelled'],
+  packed: ['shipped', 'out_for_delivery', 'cancelled'],
+  shipped: ['out_for_delivery', 'delivered'],
+  out_for_delivery: ['delivered'],
   delivered: [],
   cancelled: [],
 };
@@ -52,10 +54,48 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // Multi-item order details
+    items: [
+      {
+        productName: { type: String, required: true },
+        category: { type: String },
+        brand: { type: String },
+        quantity: { type: Number, required: true },
+        unit: { type: String, required: true },
+        unitPrice: { type: Number, required: true },
+        totalPrice: { type: Number, required: true },
+      },
+    ],
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'processing', 'shipped', 'delivered', 'cancelled'],
+      enum: ['pending', 'accepted', 'processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'],
       default: 'accepted',
+    },
+    expectedDeliveryDate: {
+      type: Date,
+    },
+    actualDeliveryDate: {
+      type: Date,
+    },
+    packedAt: {
+      type: Date,
+    },
+    shippedAt: {
+      type: Date,
+    },
+    outForDeliveryAt: {
+      type: Date,
+    },
+    deliveredAt: {
+      type: Date,
+    },
+    deliveryNotes: {
+      type: String,
+      trim: true,
+    },
+    inventoryDeducted: {
+      type: Boolean,
+      default: false,
     },
     statusHistory: [
       {
@@ -78,3 +118,4 @@ orderSchema.methods.canTransitionTo = function (nextStatus) {
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;
+

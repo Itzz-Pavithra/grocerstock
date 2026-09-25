@@ -5,9 +5,14 @@
   import { api } from '$lib/api.js';
   import { i18n } from '$lib/i18n.svelte.js';
   import { toasts } from '$lib/toasts.svelte.js';
+  import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
 
   let activeTab = $state('overview');
   let dashboardLoading = $state(true);
+
+  // Scorecard inspection state
+  let selectedWholesaler = $state(null);
+  let showScorecardModal = $state(false);
 
   // Data State
   let stats = $state({ users: { total: 0, retailers: 0, wholesalers: 0 }, requests: { total: 0, pending: 0, responded: 0, accepted: 0, rejected: 0 }, bids: { total: 0 }, requestsByCategory: [] });

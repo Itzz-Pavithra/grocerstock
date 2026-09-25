@@ -41,10 +41,19 @@ const inventorySchema = new mongoose.Schema(
       type: Number,
       default: 10,
     },
+    leadTimeDays: {
+      type: Number,
+      default: 3,
+    },
+    reorderQuantity: {
+      type: Number,
+      default: 50,
+    },
     isAvailable: {
       type: Boolean,
       default: true,
     },
+
   },
   {
     timestamps: true,

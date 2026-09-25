@@ -5,8 +5,10 @@
   import { api } from '$lib/api.js';
   import { i18n } from '$lib/i18n.svelte.js';
   import { toasts } from '$lib/toasts.svelte.js';
+  import DeliveryTrackingModal from '$lib/components/DeliveryTrackingModal.svelte';
+  import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
 
-  // Active Tab: 'requests' | 'orders' | 'inventory'
+  // Active Tab: 'requests' | 'orders' | 'inventory' | 'predictions' | 'performance'
   let activeTab = $state('requests');
   let dashboardLoading = $state(true);
 
@@ -15,8 +17,20 @@
   let myBids = $state([]);
   let orders = $state([]);
   let inventory = $state([]);
+  let predictions = $state([]);
+  let myPerformance = $state(null);
   let ordersLoading = $state(false);
   let inventoryLoading = $state(false);
+  let predictionsLoading = $state(false);
+  let performanceLoading = $state(false);
+
+  // Tracking Modal State
+  let selectedTrackingOrder = $state(null);
+  let showTrackingModal = $state(false);
+
+  // Multi-item quotation state
+  let formItems = $state([]);
+  let formExpectedDeliveryDate = $state('');
 
   // Filters for Request Feed
   let searchFeedQuery = $state('');
@@ -171,33 +185,123 @@
     }
   }
 
+  async function loadPredictions() {
+    predictionsLoading = true;
+    try {
+      const res = await api.get('/inventory/predictions');
+      predictions = res.predictions || [];
+    } catch (err) {
+      console.error('Failed to load predictions:', err);
+      toasts.error('Failed to load stockout predictions');
+    } finally {
+      predictionsLoading = false;
+    }
+  }
+
+  async function loadMyPerformance() {
+    performanceLoading = true;
+    try {
+      const res = await api.get('/wholesalers/my-performance');
+      myPerformance = res.performance || null;
+    } catch (err) {
+      console.error('Failed to load performance scorecard:', err);
+      toasts.error('Failed to load performance metrics');
+    } finally {
+      performanceLoading = false;
+    }
+  }
+
+  let availableStatusChoices = $state([]);
+  let expectedDeliveryDateInput = $state('');
+
   function openResponseForm(reqObj) {
     selectedRequest = reqObj;
-    formQuantity = reqObj.quantity;
-    formPrice = 0;
     formAvailability = 'available';
     formDeliveryTime = '24 hours';
     formRemarks = '';
     formError = '';
+
+    if (reqObj.items && Array.isArray(reqObj.items) && reqObj.items.length > 0) {
+      formItems = reqObj.items.map(it => ({
+        product: it.product,
+        productName: it.productName || it.brand || 'Item',
+        requestedQuantity: it.quantity,
+        offeredQuantity: it.quantity,
+        unitPrice: it.targetPrice || 0,
+        unit: it.unit || 'kg',
+        available: true,
+        remarks: ''
+      }));
+      formQuantity = reqObj.quantity || 0;
+      formPrice = 0;
+    } else {
+      formItems = [];
+      formQuantity = reqObj.quantity;
+      formPrice = 0;
+    }
+
     showFormModal = true;
   }
 
   async function submitBid() {
     formError = '';
-    if (formPrice <= 0) {
-      formError = 'Unit price must be greater than zero.';
-      return;
+
+    const isMultiItem = formItems && formItems.length > 0;
+
+    if (isMultiItem) {
+      const availableItems = formItems.filter(it => it.available);
+      if (availableItems.length === 0) {
+        formError = 'Please mark at least one item as available.';
+        return;
+      }
+      for (const it of availableItems) {
+        if (!it.unitPrice || it.unitPrice <= 0) {
+          formError = `Please enter a valid unit price for "${it.productName}".`;
+          return;
+        }
+        if (!it.offeredQuantity || it.offeredQuantity <= 0) {
+          formError = `Please enter a valid offered quantity for "${it.productName}".`;
+          return;
+        }
+      }
+    } else {
+      if (formPrice <= 0) {
+        formError = 'Unit price must be greater than zero.';
+        return;
+      }
+      if (formQuantity <= 0) {
+        formError = 'Quantity offered must be greater than zero.';
+        return;
+      }
     }
 
     formLoading = true;
     try {
-      await api.post(`/responses/request/${selectedRequest._id}`, {
+      const payload = {
         availability: formAvailability,
-        quantity: Number(formQuantity),
-        price: Number(formPrice),
         deliveryTime: formDeliveryTime,
         remarks: formRemarks
-      });
+      };
+
+      if (isMultiItem) {
+        payload.items = formItems.map(it => ({
+          product: it.product,
+          productName: it.productName,
+          requestedQuantity: Number(it.requestedQuantity),
+          offeredQuantity: it.available ? Number(it.offeredQuantity) : 0,
+          unitPrice: Number(it.unitPrice),
+          unit: it.unit,
+          available: it.available,
+          remarks: it.remarks || ''
+        }));
+        payload.price = payload.items.reduce((sum, it) => sum + (it.offeredQuantity * it.unitPrice), 0);
+        payload.quantity = payload.items.reduce((sum, it) => sum + it.offeredQuantity, 0);
+      } else {
+        payload.quantity = Number(formQuantity);
+        payload.price = Number(formPrice);
+      }
+
+      await api.post(`/responses/request/${selectedRequest._id}`, payload);
 
       toasts.success('Quotation submitted successfully!');
       showFormModal = false;
@@ -239,6 +343,7 @@
       invStockQty = 100;
 
       loadInventory();
+      loadPredictions();
     } catch (err) {
       invFormError = err.message || 'Failed to add inventory item';
       toasts.error(invFormError);
@@ -249,8 +354,17 @@
 
   function openOrderStatusModal(ord) {
     selectedOrder = ord;
-    nextStatusChoice = ord.status === 'accepted' ? 'processing' : ord.status === 'processing' ? 'shipped' : 'delivered';
+    const transitionMap = {
+      accepted: ['processing'],
+      processing: ['packed', 'shipped'],
+      packed: ['shipped'],
+      shipped: ['out_for_delivery', 'delivered'],
+      out_for_delivery: ['delivered']
+    };
+    availableStatusChoices = transitionMap[ord.status] || [];
+    nextStatusChoice = availableStatusChoices[0] || ord.status;
     statusNotes = '';
+    expectedDeliveryDateInput = ord.expectedDeliveryDate ? new Date(ord.expectedDeliveryDate).toISOString().slice(0, 10) : '';
     showOrderStatusModal = true;
   }
 
@@ -260,7 +374,8 @@
     try {
       await api.put(`/orders/${selectedOrder._id}/status`, {
         status: nextStatusChoice,
-        notes: statusNotes
+        notes: statusNotes,
+        expectedDeliveryDate: expectedDeliveryDateInput || undefined
       });
 
       toasts.success(`Order status updated to ${nextStatusChoice.toUpperCase()}!`);
@@ -299,6 +414,8 @@
     loadDashboardData();
     loadOrders();
     loadInventory();
+    loadPredictions();
+    loadMyPerformance();
   });
 </script>
 
@@ -306,7 +423,7 @@
   <div class="max-w-7xl mx-auto space-y-6">
     
     <!-- 1. Header Bar -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-app-card p-6 rounded-3xl border border-app-border shadow-sm">
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-app-card p-6 rounded-3xl border border-app-border shadow-sm">
       <div>
         <div class="flex items-center space-x-2 text-xs font-bold text-brand-orange uppercase tracking-wider">
           <span>Wholesale Distributor Operations</span>
@@ -320,24 +437,36 @@
       </div>
 
       <!-- Navigation Tabs -->
-      <div class="flex bg-app-cardSubtle p-1.5 rounded-2xl border border-app-border">
+      <div class="flex flex-wrap gap-1 bg-app-cardSubtle p-1.5 rounded-2xl border border-app-border">
         <button 
           onclick={() => activeTab = 'requests'}
-          class="px-4 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'requests' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'requests' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
         >
-          📋 Open Demand Radar ({incomingRequests.length})
+          📋 Demand Radar ({incomingRequests.length})
         </button>
         <button 
           onclick={() => { activeTab = 'orders'; loadOrders(); }}
-          class="px-4 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'orders' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'orders' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
         >
-          🚚 Fulfillment Orders ({orders.length})
+          🚚 Orders ({orders.length})
         </button>
         <button 
           onclick={() => { activeTab = 'inventory'; loadInventory(); }}
-          class="px-4 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'inventory' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'inventory' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
         >
-          🏭 Warehouse Inventory ({inventory.length})
+          🏭 Catalog ({inventory.length})
+        </button>
+        <button 
+          onclick={() => { activeTab = 'predictions'; loadPredictions(); }}
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'predictions' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+        >
+          🔮 Stock Predictions
+        </button>
+        <button 
+          onclick={() => { activeTab = 'performance'; loadMyPerformance(); }}
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'performance' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+        >
+          ⭐ Performance Scorecard
         </button>
       </div>
     </div>
@@ -531,31 +660,56 @@
           <div class="space-y-4">
             {#each orders as ord (ord._id)}
               <div class="p-5 rounded-2xl border border-app-border bg-app-cardSubtle flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
-                <div class="space-y-1.5">
+                <div class="space-y-1.5 flex-1">
                   <div class="flex items-center space-x-3">
                     <span class="text-xs font-mono font-bold text-app-muted">#{ord._id.slice(-6)}</span>
-                    <span class="text-base font-bold text-app-text">{ord.productName}</span>
-                    <span class="text-xs font-bold text-brand-orange">Total: ₹{ord.totalAmount}</span>
+                    <span class="text-base font-bold text-app-text">{ord.productName || (ord.items?.[0]?.productName ? `${ord.items[0].productName} +${ord.items.length - 1} items` : 'Procurement Order')}</span>
+                    <span class="text-xs font-bold text-brand-orange">Total: ₹{ord.totalAmount?.toLocaleString()}</span>
                   </div>
                   <div class="text-xs text-app-muted space-x-4">
-                    <span>Qty: <strong>{ord.quantity} {ord.unit}</strong> (@ ₹{ord.unitPrice}/{ord.unit})</span>
+                    <span>Qty: <strong>{ord.quantity} {ord.unit}</strong></span>
                     <span>Retailer Store: <strong>{ord.retailerProfile?.storeName || 'Retailer Store'}</strong></span>
+                    {#if ord.expectedDeliveryDate}
+                      <span class="text-amber-500 font-semibold">ETA: {new Date(ord.expectedDeliveryDate).toLocaleDateString()}</span>
+                    {/if}
                   </div>
+
+                  {#if ord.items && ord.items.length > 0}
+                    <div class="mt-2 pt-2 border-t border-app-border/40 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {#each ord.items as item}
+                        <div class="text-[11px] bg-app-card px-2.5 py-1 rounded-lg border border-app-border flex justify-between">
+                          <span class="font-medium text-app-text">{item.productName}</span>
+                          <span class="text-brand-orange font-bold">{item.quantity} {item.unit} @ ₹{item.unitPrice}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
 
-                <div class="flex items-center space-x-3">
+                <div class="flex flex-wrap items-center gap-2">
                   <span class="text-xs font-bold px-3 py-1 rounded-full uppercase
                     {ord.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-500' :
+                     ord.status === 'out_for_delivery' ? 'bg-indigo-500/20 text-indigo-400' :
                      ord.status === 'shipped' ? 'bg-purple-500/20 text-purple-500' :
+                     ord.status === 'packed' ? 'bg-cyan-500/20 text-cyan-400' :
                      ord.status === 'processing' ? 'bg-blue-500/20 text-blue-500' : 'bg-amber-500/20 text-amber-500'}"
                   >
-                    {ord.status}
+                    {ord.status.replace(/_/g, ' ')}
                   </span>
+
+                  <!-- Track Delivery Button -->
+                  <button 
+                    onclick={() => { selectedTrackingOrder = ord; showTrackingModal = true; }}
+                    class="px-3 py-1.5 text-xs font-bold border border-app-border bg-app-card hover:bg-app-border/40 text-app-text rounded-xl shadow-xs transition flex items-center space-x-1"
+                  >
+                    <span>📍</span>
+                    <span>Track</span>
+                  </button>
 
                   {#if ord.status !== 'delivered' && ord.status !== 'cancelled'}
                     <button 
                       onclick={() => openOrderStatusModal(ord)}
-                      class="px-4 py-2 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-xs transition"
+                      class="px-3.5 py-1.5 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-xs transition"
                     >
                       Update Status →
                     </button>
@@ -630,6 +784,192 @@
           </div>
         {/if}
       </div>
+
+    {:else if activeTab === 'predictions'}
+      <!-- 8. Intelligent Stockout & Depletion Predictions (Phase 4 Feature 1) -->
+      <div class="bg-app-card p-6 rounded-3xl border border-app-border shadow-sm space-y-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-app-border pb-4">
+          <div>
+            <div class="flex items-center space-x-2 text-xs font-bold text-brand-orange uppercase tracking-wider">
+              <span>Predictive Inventory Analytics</span>
+            </div>
+            <h2 class="text-xl font-bold font-heading text-app-text mt-0.5">
+              Warehouse Stockout & Reorder Predictions
+            </h2>
+            <p class="text-xs text-app-muted">
+              Calculated using actual historical order fulfillment consumption over the past 30 days.
+            </p>
+          </div>
+          <button 
+            onclick={loadPredictions} 
+            class="px-3.5 py-1.5 text-xs font-bold border border-app-border rounded-xl bg-app-cardSubtle hover:bg-app-border/40 text-app-text transition"
+          >
+            🔄 Refresh Analysis
+          </button>
+        </div>
+
+        {#if predictionsLoading}
+          <div class="space-y-3">
+            {#each Array(3) as _}
+              <div class="h-20 bg-app-cardSubtle rounded-2xl animate-shimmer"></div>
+            {/each}
+          </div>
+        {:else if predictions.length === 0}
+          <div class="text-center py-12 text-app-muted space-y-2">
+            <div class="text-4xl">🔮</div>
+            <h3 class="text-sm font-bold text-app-text">No inventory items available</h3>
+            <p class="text-xs max-w-sm mx-auto">Add inventory items to your catalog to generate depletion rate forecasts and stockout predictions.</p>
+          </div>
+        {:else}
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {#each predictions as pred}
+              <div class="bg-app-cardSubtle p-5 rounded-2xl border border-app-border space-y-3 shadow-xs">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="text-sm font-bold text-app-text">{pred.productName}</h3>
+                    <span class="text-[11px] text-app-muted">{pred.category} {pred.brand ? `• ${pred.brand}` : ''}</span>
+                  </div>
+                  <span class="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full
+                    {pred.status === 'Critical' || pred.status === 'Out of Stock' ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30' :
+                     pred.status === 'Low' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' :
+                     'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30'}"
+                  >
+                    {pred.status}
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-app-border/40">
+                  <div class="bg-app-card p-2.5 rounded-xl border border-app-border">
+                    <span class="text-[10px] text-app-muted block">Current Stock</span>
+                    <strong class="text-sm font-bold text-app-text">{pred.currentStock} {pred.unit}</strong>
+                  </div>
+                  <div class="bg-app-card p-2.5 rounded-xl border border-app-border">
+                    <span class="text-[10px] text-app-muted block">Daily Depletion Rate</span>
+                    <strong class="text-sm font-bold text-brand-orange">
+                      {pred.hasHistory ? `${pred.averageDailyUsage} ${pred.unit}/day` : 'N/A'}
+                    </strong>
+                  </div>
+                </div>
+
+                <div class="bg-app-card p-3 rounded-xl border border-app-border text-xs space-y-1">
+                  <div class="flex justify-between">
+                    <span class="text-app-muted">Predicted Stockout:</span>
+                    {#if pred.hasHistory}
+                      <strong class="text-rose-500 font-bold">
+                        {pred.daysUntilStockout !== null ? `${pred.daysUntilStockout} days` : 'Depleted'}
+                      </strong>
+                    {:else}
+                      <span class="text-app-muted italic text-[11px]">Insufficient history for prediction</span>
+                    {/if}
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-app-muted">Recommended Restock:</span>
+                    <strong class="text-app-text font-bold">
+                      {pred.recommendedReorderQuantity > 0 ? `${pred.recommendedReorderQuantity} ${pred.unit}` : 'Stock Sufficient'}
+                    </strong>
+                  </div>
+                  <div class="flex justify-between text-[11px] pt-1 border-t border-app-border/30">
+                    <span class="text-app-muted">30-Day Total Outflow:</span>
+                    <span class="text-app-text font-semibold">{pred.historicalConsumption} {pred.unit}</span>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+    {:else if activeTab === 'performance'}
+      <!-- 9. Wholesaler Supplier Scorecard (Phase 6 Feature 3) -->
+      <div class="bg-app-card p-6 rounded-3xl border border-app-border shadow-sm space-y-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-app-border pb-4">
+          <div>
+            <div class="flex items-center space-x-2 text-xs font-bold text-brand-orange uppercase tracking-wider">
+              <span>Verified Wholesaler Analytics</span>
+            </div>
+            <h2 class="text-xl font-bold font-heading text-app-text mt-0.5">
+              My Supplier Performance Scorecard
+            </h2>
+            <p class="text-xs text-app-muted">
+              Transparent fulfillment reliability metrics verified from actual database order transactions.
+            </p>
+          </div>
+          <button 
+            onclick={loadMyPerformance} 
+            class="px-3.5 py-1.5 text-xs font-bold border border-app-border rounded-xl bg-app-cardSubtle hover:bg-app-border/40 text-app-text transition"
+          >
+            🔄 Refresh Metrics
+          </button>
+        </div>
+
+        {#if performanceLoading}
+          <div class="h-64 bg-app-cardSubtle rounded-2xl animate-shimmer"></div>
+        {:else if !myPerformance}
+          <div class="text-center py-12 text-app-muted space-y-2">
+            <div class="text-4xl">📊</div>
+            <h3 class="text-sm font-bold text-app-text">Performance data unavailable</h3>
+            <p class="text-xs max-w-sm mx-auto">Complete orders with retailers to establish your verified delivery scorecard.</p>
+          </div>
+        {:else}
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-[11px] font-bold text-app-muted uppercase">Total Orders</span>
+              <div class="text-2xl font-extrabold font-heading text-app-text mt-1">{myPerformance.totalOrders}</div>
+              <span class="text-[10px] text-app-muted">Lifetime assignments</span>
+            </div>
+
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-[11px] font-bold text-app-muted uppercase">Fulfillment Rate</span>
+              <div class="text-2xl font-extrabold font-heading text-emerald-500 mt-1">
+                {myPerformance.fulfillmentRate !== null ? `${myPerformance.fulfillmentRate}%` : 'N/A'}
+              </div>
+              <span class="text-[10px] text-app-muted">{myPerformance.completedOrders} completed of {myPerformance.totalOrders}</span>
+            </div>
+
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-[11px] font-bold text-app-muted uppercase">On-Time Deliveries</span>
+              <div class="text-2xl font-extrabold font-heading text-brand-orange mt-1">
+                {myPerformance.onTimeDeliveryRate !== null ? `${myPerformance.onTimeDeliveryRate}%` : 'N/A'}
+              </div>
+              <span class="text-[10px] text-app-muted">{myPerformance.onTimeDeliveries} on-time ({myPerformance.lateDeliveries} late)</span>
+            </div>
+
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-[11px] font-bold text-app-muted uppercase">Avg Delivery Time</span>
+              <div class="text-2xl font-extrabold font-heading text-blue-500 mt-1">
+                {myPerformance.averageDeliveryDays !== null ? `${myPerformance.averageDeliveryDays} days` : 'N/A'}
+              </div>
+              <span class="text-[10px] text-app-muted">Order accepted to delivery</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-xs text-app-muted">Total Order Value Fulfilled</span>
+              <div class="text-xl font-bold text-app-text mt-1">₹{myPerformance.totalOrderValue?.toLocaleString()}</div>
+            </div>
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-xs text-app-muted">Cancelled Orders</span>
+              <div class="text-xl font-bold {myPerformance.cancelledOrders > 0 ? 'text-rose-500' : 'text-emerald-500'} mt-1">
+                {myPerformance.cancelledOrders}
+              </div>
+            </div>
+            <div class="bg-app-cardSubtle p-4 rounded-2xl border border-app-border">
+              <span class="text-xs text-app-muted">Avg Quotation Response</span>
+              <div class="text-xl font-bold text-purple-400 mt-1">
+                {myPerformance.quotationResponseTimeHours !== null ? `${myPerformance.quotationResponseTimeHours} hours` : 'N/A'}
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3 bg-app-cardSubtle rounded-2xl border border-app-border text-[11px] text-app-muted flex items-center space-x-2">
+            <span>🛡️</span>
+            <span>
+              These performance metrics are calculated automatically from completed order timestamps and verified deliveries. They are displayed to retailers when comparing your bids.
+            </span>
+          </div>
+        {/if}
+      </div>
     {/if}
 
   </div>
@@ -638,9 +978,12 @@
 <!-- Submit Quotation Modal -->
 {#if showFormModal}
   <div class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-app-card w-full max-w-lg rounded-3xl border border-app-border shadow-2xl p-6 space-y-5 animate-toast">
+    <div class="bg-app-card w-full max-w-2xl rounded-3xl border border-app-border shadow-2xl p-6 space-y-5 animate-toast max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b border-app-border pb-3">
-        <h3 class="text-lg font-bold font-heading text-app-text">Submit Quotation Quote</h3>
+        <div>
+          <h3 class="text-lg font-bold font-heading text-app-text">Submit Quotation Offer</h3>
+          <p class="text-xs text-app-muted">Provide pricing and availability to the requesting retailer</p>
+        </div>
         <button onclick={() => showFormModal = false} class="text-app-muted hover:text-app-text text-lg">✕</button>
       </div>
 
@@ -651,57 +994,137 @@
       {/if}
 
       <div class="space-y-4 text-xs">
-        <div>
-          <span class="text-app-muted block">Requesting Product:</span>
-          <strong class="text-sm font-bold text-app-text">{selectedRequest?.productName} ({selectedRequest?.quantity} {selectedRequest?.unit})</strong>
-        </div>
+        {#if formItems && formItems.length > 0}
+          <!-- Multi-Product Quotation Breakdown (Phase 9 Feature 6) -->
+          <div class="space-y-2">
+            <span class="text-xs font-bold text-brand-orange uppercase tracking-wider block">
+              Multi-Product Procurement Items ({formItems.length})
+            </span>
+            <div class="border border-app-border rounded-2xl overflow-hidden divide-y divide-app-border">
+              {#each formItems as item, idx}
+                <div class="p-3 bg-app-cardSubtle space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                      <input 
+                        type="checkbox" 
+                        id={`item-avail-${idx}`}
+                        bind:checked={item.available}
+                        class="accent-brand-orange rounded"
+                      />
+                      <label for={`item-avail-${idx}`} class="font-bold text-sm text-app-text cursor-pointer">
+                        {item.productName}
+                      </label>
+                      <span class="text-app-muted text-[11px]">(Requested: {item.requestedQuantity} {item.unit})</span>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full {item.available ? 'bg-emerald-500/20 text-emerald-500' : 'bg-rose-500/20 text-rose-500'}">
+                      {item.available ? 'Available' : 'Unavailable'}
+                    </span>
+                  </div>
 
-        <div class="grid grid-cols-2 gap-3">
+                  {#if item.available}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                      <div>
+                        <label for={`item-offered-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Offered Qty ({item.unit})</label>
+                        <input 
+                          id={`item-offered-${idx}`}
+                          type="number"
+                          bind:value={item.offeredQuantity}
+                          min="1"
+                          max={item.requestedQuantity}
+                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text"
+                        />
+                      </div>
+                      <div>
+                        <label for={`item-price-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Unit Price (₹)</label>
+                        <input 
+                          id={`item-price-${idx}`}
+                          type="number"
+                          bind:value={item.unitPrice}
+                          min="0"
+                          step="0.5"
+                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text font-bold text-brand-orange"
+                        />
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                        <label for={`item-notes-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Item Notes</label>
+                        <input 
+                          id={`item-notes-${idx}`}
+                          type="text"
+                          bind:value={item.remarks}
+                          placeholder="Grade A / packaged"
+                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text"
+                        />
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+
+            <!-- Total Quoted Amount Summary -->
+            <div class="p-3 bg-app-card rounded-xl border border-app-border flex justify-between items-center text-xs">
+              <span class="text-app-muted">Total Quoted Quotation Value:</span>
+              <strong class="text-sm font-bold text-brand-orange">
+                ₹{formItems.reduce((sum, it) => sum + (it.available ? (Number(it.offeredQuantity) || 0) * (Number(it.unitPrice) || 0) : 0), 0).toLocaleString()}
+              </strong>
+            </div>
+          </div>
+        {:else}
+          <!-- Single Product Quotation (Legacy backward compatibility) -->
           <div>
-            <label for="form-price" class="block font-bold text-app-text uppercase mb-1">Offered Unit Price (₹) *</label>
+            <span class="text-app-muted block">Requesting Product:</span>
+            <strong class="text-sm font-bold text-app-text">{selectedRequest?.productName} ({selectedRequest?.quantity} {selectedRequest?.unit})</strong>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="form-price" class="block font-bold text-app-text uppercase mb-1">Offered Unit Price (₹) *</label>
+              <input 
+                id="form-price"
+                type="number" 
+                bind:value={formPrice}
+                min="0"
+                step="0.5"
+                placeholder="e.g. 45"
+                class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="form-quantity" class="block font-bold text-app-text uppercase mb-1">Offered Quantity *</label>
+              <input 
+                id="form-quantity"
+                type="number" 
+                bind:value={formQuantity}
+                min="1"
+                class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
+              />
+            </div>
+          </div>
+        {/if}
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="form-delivery-time" class="block font-bold text-app-text uppercase mb-1">Lead Time / Delivery Schedule</label>
             <input 
-              id="form-price"
-              type="number" 
-              bind:value={formPrice}
-              min="0"
-              step="0.5"
-              placeholder="e.g. 45"
+              id="form-delivery-time"
+              type="text" 
+              bind:value={formDeliveryTime}
+              placeholder="Same day / 24 hours"
               class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
             />
           </div>
 
           <div>
-            <label for="form-quantity" class="block font-bold text-app-text uppercase mb-1">Offered Quantity *</label>
+            <label for="form-remarks" class="block font-bold text-app-muted uppercase mb-1">Remarks / Offer Details</label>
             <input 
-              id="form-quantity"
-              type="number" 
-              bind:value={formQuantity}
-              min="1"
+              id="form-remarks"
+              type="text"
+              bind:value={formRemarks}
+              placeholder="Free doorstep delivery on bulk order..."
               class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
             />
           </div>
-        </div>
-
-        <div>
-          <label for="form-delivery-time" class="block font-bold text-app-text uppercase mb-1">Lead Time / Delivery Schedule</label>
-          <input 
-            id="form-delivery-time"
-            type="text" 
-            bind:value={formDeliveryTime}
-            placeholder="Same day / 24 hours"
-            class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label for="form-remarks" class="block font-bold text-app-muted uppercase mb-1">Remarks / Offer Details</label>
-          <textarea 
-            id="form-remarks"
-            bind:value={formRemarks}
-            rows="2"
-            placeholder="Free doorstep delivery on bulk order..."
-            class="w-full px-3.5 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-          ></textarea>
         </div>
 
         <div class="flex space-x-3 pt-2">
@@ -834,29 +1257,47 @@
   </div>
 {/if}
 
-<!-- Update Order Fulfillment Status Modal -->
+<!-- Update Order Fulfillment Status Modal (Phase 7 Feature 4) -->
 {#if showOrderStatusModal}
   <div class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-app-card w-full max-w-sm rounded-3xl border border-app-border shadow-2xl p-6 space-y-4 animate-toast">
       <h3 class="text-base font-bold font-heading text-app-text">Update Order Fulfillment Status</h3>
-      <p class="text-xs text-app-muted">Order: {selectedOrder?.productName} ({selectedOrder?.quantity} {selectedOrder?.unit})</p>
+      <p class="text-xs text-app-muted">
+        Order #{selectedOrder?._id.slice(-6)} • Current: <span class="font-bold text-brand-orange uppercase">{selectedOrder?.status.replace(/_/g, ' ')}</span>
+      </p>
 
       <div class="space-y-3 text-xs">
         <div>
-          <label for="next-status-choice" class="block font-bold text-app-text mb-1">Next Status Pipeline Step:</label>
-          <select 
-            id="next-status-choice"
-            bind:value={nextStatusChoice}
-            class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs font-bold text-brand-orange uppercase"
-          >
-            <option value="processing">PROCESSING</option>
-            <option value="shipped">SHIPPED (In-Transit)</option>
-            <option value="delivered">DELIVERED (Fulfilled)</option>
-          </select>
+          <label for="next-status-choice" class="block font-bold text-app-text mb-1">Next Fulfillment Pipeline Step:</label>
+          {#if availableStatusChoices.length === 0}
+            <div class="p-2.5 bg-app-cardSubtle rounded-xl text-app-muted text-xs">
+              No further status transitions available for this order.
+            </div>
+          {:else}
+            <select 
+              id="next-status-choice"
+              bind:value={nextStatusChoice}
+              class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs font-bold text-brand-orange uppercase"
+            >
+              {#each availableStatusChoices as st}
+                <option value={st}>{st.replace(/_/g, ' ').toUpperCase()}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
 
         <div>
-          <label for="status-notes" class="block font-bold text-app-muted mb-1">Notes / Tracking Info</label>
+          <label for="expected-delivery-date" class="block font-bold text-app-text mb-1">Expected Delivery Date (ETA)</label>
+          <input 
+            id="expected-delivery-date"
+            type="date" 
+            bind:value={expectedDeliveryDateInput}
+            class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text"
+          />
+        </div>
+
+        <div>
+          <label for="status-notes" class="block font-bold text-app-muted mb-1">Dispatch / Delivery Notes</label>
           <input 
             id="status-notes"
             type="text" 
@@ -875,7 +1316,7 @@
           </button>
           <button 
             onclick={handleUpdateOrderStatus}
-            disabled={updateLoading}
+            disabled={updateLoading || availableStatusChoices.length === 0}
             class="flex-1 py-2.5 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-xs"
           >
             {updateLoading ? 'Updating...' : 'Confirm Update'}
@@ -910,3 +1351,6 @@
     </div>
   </div>
 {/if}
+
+<!-- Delivery Tracking Modal -->
+<DeliveryTrackingModal bind:show={showTrackingModal} order={selectedTrackingOrder} />

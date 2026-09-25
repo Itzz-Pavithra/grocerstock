@@ -22,7 +22,15 @@
 		"vite": "^8.0.16"
 	},
 	"dependencies": {
+		"bcryptjs": "^3.0.3",
+		"cors": "^2.8.6",
+		"dotenv": "^18.0.3",
+		"express": "^5.2.1",
+		"jsonwebtoken": "^9.0.3",
 		"lucide-svelte": "^1.0.1",
-		"mongodb": "^7.6.0"
+		"maplibre-gl": "^6.11.2",
+		"mongodb": "^7.6.0",
+		"mongoose": "^9.10.2",
+		"nodemailer": "^10.0.10"
 	}
 }

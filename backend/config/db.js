@@ -18,18 +18,38 @@ const connectDB = async () => {
     return cached.conn;
   }
 
-  const uri = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/grocery-stock-request-system';
-  if (!uri) {
-    throw new Error('MONGODB_URI environment variable is not defined.');
-  }
+  const primaryUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+  const fallbackUri = 'mongodb://127.0.0.1:27017/grocery-stock-request-system';
+  const uri = primaryUri || fallbackUri;
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(uri, {
+    const opts = {
       dbName: process.env.MONGODB_DB_NAME || 'grocery-stock-request-system',
-      serverSelectionTimeoutMS: 10000,
-    }).then((m) => {
+      serverSelectionTimeoutMS: 8000,
+    };
+
+    cached.promise = mongoose.connect(uri, opts).then((m) => {
       console.log(`✅ MongoDB Connected Successfully: ${m.connection.host} / DB: ${m.connection.name}`);
       return m;
+    }).catch(async (primaryError) => {
+      // If Atlas connection failed in development (e.g. IP not whitelisted or offline), attempt local fallback
+      if (process.env.NODE_ENV !== 'production' && primaryUri && primaryUri.includes('mongodb.net')) {
+        console.warn(`⚠️ Warning: MongoDB Atlas connection failed (${primaryError.message}).`);
+        console.warn(`👉 To use Atlas, whitelist your current IP address (or 0.0.0.0/0) in MongoDB Atlas Network Access.`);
+        console.log(`🔄 Attempting local MongoDB connection fallback at ${fallbackUri}...`);
+        try {
+          const fallbackConn = await mongoose.connect(fallbackUri, {
+            ...opts,
+            serverSelectionTimeoutMS: 3000,
+          });
+          console.log(`✅ Local MongoDB Connected Successfully: ${fallbackConn.connection.host}`);
+          return fallbackConn;
+        } catch (localError) {
+          console.error(`❌ Local MongoDB fallback also unavailable: ${localError.message}`);
+          throw primaryError;
+        }
+      }
+      throw primaryError;
     });
   }
 
@@ -44,4 +64,5 @@ const connectDB = async () => {
 };
 
 export default connectDB;
+
 

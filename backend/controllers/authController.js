@@ -233,6 +233,77 @@ export const getMe = async (req, res) => {
   }
 };
 
+export const updateProfile = async (req, res) => {
+  const { storeName, companyName, phone, address, city, state, postalCode, latitude, longitude, categoriesSupplied, deliveryRadiusKm } = req.body;
+
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    let profile = null;
+    const lat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : undefined;
+    const lng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : undefined;
+
+    if (user.role === 'retailer') {
+      profile = await Retailer.findOne({ user: user._id });
+      if (profile) {
+        if (storeName) profile.storeName = storeName.trim();
+        if (phone) profile.phone = phone.trim();
+        if (address) profile.address = address.trim();
+        if (city !== undefined) profile.city = city.trim();
+        if (state !== undefined) profile.state = state.trim();
+        if (postalCode !== undefined) profile.postalCode = postalCode.trim();
+        if (lat !== undefined && !isNaN(lat)) {
+          profile.latitude = lat;
+        }
+        if (lng !== undefined && !isNaN(lng)) {
+          profile.longitude = lng;
+        }
+        if (lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
+          profile.location = { type: 'Point', coordinates: [lng, lat] };
+        }
+        await profile.save();
+      }
+    } else if (user.role === 'wholesaler') {
+      profile = await Wholesaler.findOne({ user: user._id });
+      if (profile) {
+        if (companyName) profile.companyName = companyName.trim();
+        if (phone) profile.phone = phone.trim();
+        if (address) profile.address = address.trim();
+        if (city !== undefined) profile.city = city.trim();
+        if (state !== undefined) profile.state = state.trim();
+        if (postalCode !== undefined) profile.postalCode = postalCode.trim();
+        if (lat !== undefined && !isNaN(lat)) {
+          profile.latitude = lat;
+        }
+        if (lng !== undefined && !isNaN(lng)) {
+          profile.longitude = lng;
+        }
+        if (lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
+          profile.location = { type: 'Point', coordinates: [lng, lat] };
+        }
+        if (categoriesSupplied && Array.isArray(categoriesSupplied)) {
+          profile.categoriesSupplied = categoriesSupplied;
+        }
+        if (deliveryRadiusKm !== undefined) {
+          profile.deliveryRadiusKm = Number(deliveryRadiusKm);
+        }
+        await profile.save();
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      profile,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
   try {
@@ -245,3 +316,4 @@ export const forgotPassword = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+

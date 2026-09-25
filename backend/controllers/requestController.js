@@ -4,28 +4,72 @@ import Retailer from '../models/Retailer.js';
 import Notification from '../models/Notification.js';
 
 export const createRequest = async (req, res) => {
-  const { productName, category, brand, quantity, unit, urgency, preferredDeliveryDate, remarks } = req.body;
+  const { productName, category, brand, quantity, unit, urgency, preferredDeliveryDate, remarks, items } = req.body;
 
   try {
+    let finalItems = [];
+    let primaryProductName = productName;
+    let primaryCategory = category;
+    let primaryBrand = brand || '';
+    let primaryQuantity = quantity ? Number(quantity) : 0;
+    let primaryUnit = unit || 'kg';
+
+    if (items && Array.isArray(items) && items.length > 0) {
+      finalItems = items.map((it) => ({
+        productName: (it.productName || '').trim(),
+        category: (it.category || 'General').trim(),
+        brand: (it.brand || '').trim(),
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        unit: (it.unit || 'kg').trim(),
+        fulfilledQuantity: 0,
+        remainingQuantity: Math.max(1, Number(it.quantity) || 1),
+        remarks: (it.remarks || '').trim(),
+      }));
+
+      // Backward compatibility fallback for primary fields
+      if (!primaryProductName && finalItems.length > 0) {
+        primaryProductName = finalItems.length === 1 
+          ? finalItems[0].productName 
+          : `${finalItems[0].productName} + ${finalItems.length - 1} more items`;
+        primaryCategory = finalItems[0].category;
+        primaryBrand = finalItems[0].brand;
+        primaryQuantity = finalItems.reduce((acc, it) => acc + it.quantity, 0);
+        primaryUnit = finalItems[0].unit;
+      }
+    }
+
+    if (!primaryProductName) {
+      return res.status(400).json({ message: 'Product name or items array is required' });
+    }
+
     const stockRequest = await StockRequest.create({
       retailer: req.user._id,
-      productName,
-      category,
-      brand,
-      quantity,
-      unit,
-      urgency,
-      preferredDeliveryDate,
+      productName: primaryProductName,
+      category: primaryCategory || 'General',
+      brand: primaryBrand,
+      quantity: primaryQuantity || 1,
+      unit: primaryUnit,
+      urgency: urgency || 'medium',
+      preferredDeliveryDate: preferredDeliveryDate || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
       remarks,
+      items: finalItems,
+      requestedQuantity: primaryQuantity || 1,
+      fulfilledQuantity: 0,
+      remainingQuantity: primaryQuantity || 1,
+      status: 'pending',
     });
 
     const wholesalers = await User.find({ role: 'wholesaler', isActive: true });
     const retailerProfile = await Retailer.findOne({ user: req.user._id });
     const storeName = retailerProfile ? retailerProfile.storeName : 'A Retailer';
 
+    const noticeDesc = finalItems.length > 1
+      ? `Procurement Request #${stockRequest._id.toString().slice(-6)} for ${finalItems.length} products`
+      : `${stockRequest.quantity} ${stockRequest.unit} of "${stockRequest.productName}"`;
+
     const notifications = wholesalers.map((wholesaler) => ({
       user: wholesaler._id,
-      message: `New stock request for ${quantity} ${unit} of "${productName}" from ${storeName}.`,
+      message: `New stock request: ${noticeDesc} from ${storeName}.`,
       type: 'request_received',
     }));
 
@@ -38,6 +82,7 @@ export const createRequest = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
 
 export const getRequests = async (req, res) => {
   try {
