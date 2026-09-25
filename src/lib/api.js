@@ -71,13 +71,8 @@ async function request(method, path, body = null) {
     const hasConfiguredBase = Boolean(import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL);
 
     if (import.meta.env.PROD) {
-      if (!hasConfiguredBase && baseUrl === '/api') {
-        throw new Error(
-          `Unable to connect to API service at ${fullUrl}. VITE_API_BASE_URL is not configured in your deployment settings.`
-        );
-      }
       throw new Error(
-        `Unable to reach backend API at ${baseUrl}. Please check that the server is active and CORS is configured.`
+        `Unable to reach backend API at ${baseUrl}. Please check that the backend service is deployed and MONGODB_URI is configured.`
       );
     }
 
