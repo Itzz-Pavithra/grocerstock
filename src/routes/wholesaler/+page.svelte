@@ -8,6 +8,7 @@
   import { toasts } from '$lib/toasts.svelte.js';
   import DeliveryTrackingModal from '$lib/components/DeliveryTrackingModal.svelte';
   import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
+  import { getMapLibre, osmRasterStyle } from '$lib/maplibre.js';
 
   // Active Tab: 'requests' | 'orders' | 'inventory' | 'predictions' | 'performance' | 'location'
   let activeTab = $state('requests');
@@ -432,31 +433,6 @@
   const mapTilerKey = (import.meta.env.VITE_MAPTILER_API_KEY || '').trim();
   const hasMapTilerKey = Boolean(mapTilerKey && mapTilerKey !== 'YOUR_MAPTILER_API_KEY');
 
-  const osmRasterStyle = {
-    version: 8,
-    sources: {
-      'osm-tiles': {
-        type: 'raster',
-        tiles: [
-          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-        ],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-      }
-    },
-    layers: [
-      {
-        id: 'osm-tiles',
-        type: 'raster',
-        source: 'osm-tiles',
-        minzoom: 0,
-        maxzoom: 19
-      }
-    ]
-  };
-
   async function loadProfileLocation() {
     try {
       const res = await api.get('/auth/me');
@@ -486,13 +462,14 @@
     if (!browser || !locMapContainer) return;
 
     if (locMapInstance) {
-      locMapInstance.resize();
+      setTimeout(() => locMapInstance?.resize(), 50);
       return;
     }
 
     locMapLoading = true;
+    locMapError = null;
     try {
-      const maplibregl = (await import('maplibre-gl')).default;
+      const maplibregl = await getMapLibre();
       const mapStyle = hasMapTilerKey
         ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${mapTilerKey}`
         : osmRasterStyle;
@@ -510,6 +487,18 @@
       locMapInstance.on('load', () => {
         locMapLoading = false;
         renderLocMarker(maplibregl);
+        setTimeout(() => locMapInstance?.resize(), 100);
+      });
+
+      locMapInstance.on('error', (e) => {
+        console.warn('MapLibre runtime error:', e);
+        if (hasMapTilerKey && locMapInstance?.setStyle) {
+          try {
+            locMapInstance.setStyle(osmRasterStyle);
+          } catch {
+            // Keep current style
+          }
+        }
       });
 
       locMapInstance.on('click', async (e) => {
@@ -526,9 +515,11 @@
     }
   }
 
-  function renderLocMarker(maplibregl) {
+  async function renderLocMarker(maplibregl) {
     if (!locMapInstance || !browser) return;
     if (locMapMarker) locMapMarker.remove();
+
+    const mgl = maplibregl || (await getMapLibre());
 
     const el = document.createElement('div');
     el.className = 'cursor-pointer';
@@ -538,7 +529,7 @@
       </div>
     `;
 
-    locMapMarker = new maplibregl.Marker({ element: el, draggable: true })
+    locMapMarker = new mgl.Marker({ element: el, draggable: true })
       .setLngLat([locLng, locLat])
       .addTo(locMapInstance);
 
@@ -608,7 +599,7 @@
 
     if (locMapInstance && browser) {
       locMapInstance.flyTo({ center: [locLng, locLat], zoom: 14, essential: true });
-      const maplibregl = (await import('maplibre-gl')).default;
+      const maplibregl = await getMapLibre();
       renderLocMarker(maplibregl);
     }
     toasts.success(`Selected: ${place.name}`);
@@ -629,7 +620,7 @@
 
         if (locMapInstance && browser) {
           locMapInstance.flyTo({ center: [locLng, locLat], zoom: 14, essential: true });
-          const maplibregl = (await import('maplibre-gl')).default;
+          const maplibregl = await getMapLibre();
           renderLocMarker(maplibregl);
         }
 

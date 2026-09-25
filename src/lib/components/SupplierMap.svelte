@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import { api } from '$lib/api.js';
   import { toasts } from '$lib/toasts.svelte.js';
+  import { getMapLibre, osmRasterStyle } from '$lib/maplibre.js';
   import { 
     MapPin, 
     Navigation, 
@@ -20,7 +21,8 @@
     Route,
     Crosshair,
     X,
-    Loader2
+    Loader2,
+    Package
   } from 'lucide-svelte';
 
   let { 
@@ -66,32 +68,6 @@
   // MapTiler API Key (Optional)
   const mapTilerKey = (import.meta.env.VITE_MAPTILER_API_KEY || '').trim();
   const hasMapTilerKey = Boolean(mapTilerKey && mapTilerKey !== 'YOUR_MAPTILER_API_KEY');
-
-  // Standard OpenStreetMap raster style fallback (works 100% reliably anywhere without API key)
-  const osmRasterStyle = {
-    version: 8,
-    sources: {
-      'osm-tiles': {
-        type: 'raster',
-        tiles: [
-          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-        ],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-      }
-    },
-    layers: [
-      {
-        id: 'osm-tiles',
-        type: 'raster',
-        source: 'osm-tiles',
-        minzoom: 0,
-        maxzoom: 19
-      }
-    ]
-  };
 
   // Center coordinates (Default: Salem / Tamil Nadu 11.6643, 78.1460, or user location if available)
   let currentLat = $state(11.6643);
@@ -250,7 +226,7 @@
     }
 
     try {
-      const maplibregl = (await import('maplibre-gl')).default;
+      const maplibregl = await getMapLibre();
 
       const mapStyle = hasMapTilerKey
         ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${mapTilerKey}`
@@ -268,6 +244,10 @@
 
       mapInstance.on('load', () => {
         mapLoading = false;
+        mapError = null;
+        if (mapInstance) {
+          mapInstance.resize();
+        }
         renderUserMarker();
         updateMapMarkers();
       });
@@ -320,80 +300,106 @@
     if (!mapInstance || !browser) return;
     if (userMarker) userMarker.remove();
 
-    const maplibregl = (await import('maplibre-gl')).default;
+    try {
+      const maplibregl = await getMapLibre();
 
-    const el = document.createElement('div');
-    el.className = 'user-pin flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg text-white';
-    el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+      const el = document.createElement('div');
+      el.className = 'user-pin flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg text-white';
+      el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
 
-    userMarker = new maplibregl.Marker({ element: el })
-      .setLngLat([currentLng, currentLat])
-      .setPopup(
-        new maplibregl.Popup({ offset: 25 }).setHTML(`
-          <div style="font-family: inherit; padding: 4px;">
-            <div style="font-weight: 700; color: #1e40af;">📍 Your Search Center</div>
-            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${locationLabel}</div>
-          </div>
-        `)
-      )
-      .addTo(mapInstance);
+      userMarker = new maplibregl.Marker({ element: el })
+        .setLngLat([currentLng, currentLat])
+        .setPopup(
+          new maplibregl.Popup({ offset: 25 }).setHTML(`
+            <div style="font-family: inherit; padding: 4px;">
+              <div style="font-weight: 700; color: #1e40af;">📍 Your Search Center</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${locationLabel}</div>
+            </div>
+          `)
+        )
+        .addTo(mapInstance);
+    } catch (err) {
+      console.warn('Failed to render user marker:', err);
+    }
   }
 
   async function updateMapMarkers() {
     if (!mapInstance || !browser) return;
 
-    const maplibregl = (await import('maplibre-gl')).default;
+    try {
+      const maplibregl = await getMapLibre();
 
-    // Remove existing wholesaler markers
-    markers.forEach((m) => m.remove());
-    markers = [];
+      // Remove existing wholesaler markers
+      markers.forEach((m) => m.remove());
+      markers = [];
 
-    wholesalers.forEach((w) => {
-      if (w.longitude && w.latitude) {
-        const el = document.createElement('div');
-        el.className = 'wholesaler-pin cursor-pointer transform hover:scale-110 transition-transform duration-150';
-        el.innerHTML = `
-          <div style="background-color: #FD6F2F; color: white; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-          </div>
-        `;
-
-        const distanceTag = w.distanceKm !== null ? `<b>${w.distanceKm} km</b> away` : '';
-        const popupContent = `
-          <div style="font-family: inherit; min-width: 200px; padding: 6px;">
-            <div style="font-weight: 700; font-size: 14px; color: #1e293b; margin-bottom: 2px;">${w.companyName}</div>
-            <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">📍 ${w.address || ''}${w.city ? `, ${w.city}` : ''}</div>
-            ${distanceTag ? `<div style="font-size: 11px; color: #FD6F2F; margin-bottom: 6px;">🚗 ${distanceTag}</div>` : ''}
-            <div style="font-size: 11px; color: #047857; font-weight: 600; margin-bottom: 6px;">
-              ✓ Fulfillment: ${w.performance?.fulfillmentRate || '98%'} (${w.performance?.completedOrders || 0} orders)
+      wholesalers.forEach((w) => {
+        if (w.longitude && w.latitude) {
+          const el = document.createElement('div');
+          el.className = 'wholesaler-pin cursor-pointer transform hover:scale-110 transition-transform duration-150';
+          el.innerHTML = `
+            <div style="background-color: #FD6F2F; color: white; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             </div>
-            <div style="display: flex; gap: 6px; margin-top: 8px;">
-              <a 
-                href="https://www.google.com/maps/dir/?api=1&origin=${currentLat},${currentLng}&destination=${w.latitude},${w.longitude}" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"
-              >
-                Maps ↗
-              </a>
+          `;
+
+          const distanceTag = w.distanceKm !== null ? `<b>${w.distanceKm} km</b> away` : '';
+          const deliveryStatusHtml = w.deliveryStatus
+            ? `<div style="font-size: 11px; font-weight: 600; color: ${w.isDeliveryAvailable ? '#047857' : '#b45309'}; margin-bottom: 4px;">
+                ${w.isDeliveryAvailable ? '✓ Delivery Available' : '⚠ Outside Delivery Area'} (${w.deliveryRadiusKm || 25} km radius)
+               </div>`
+            : '';
+
+          const stockHtml = (w.availableStock && w.availableStock.length > 0)
+            ? `<div style="font-size: 11px; color: #334155; margin-top: 6px; padding-top: 5px; border-top: 1px dashed #cbd5e1;">
+                <b style="color: #0f172a;">Live Stock:</b>
+                <div style="margin-top: 2px; color: #475569;">
+                  ${w.availableStock.slice(0, 3).map(s => `${s.productName} - ${s.quantity} ${s.unit}`).join('<br/>')}
+                  ${w.availableStock.length > 3 ? `<span style="font-size: 10px; color: #94a3b8;">+${w.availableStock.length - 3} more</span>` : ''}
+                </div>
+               </div>`
+            : '';
+
+          const popupContent = `
+            <div style="font-family: inherit; min-width: 210px; padding: 6px;">
+              <div style="font-weight: 700; font-size: 14px; color: #1e293b; margin-bottom: 2px;">${w.companyName}</div>
+              <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">📍 ${w.address || ''}${w.city ? `, ${w.city}` : ''}</div>
+              ${distanceTag ? `<div style="font-size: 11px; color: #FD6F2F; margin-bottom: 4px;">🚗 ${distanceTag}</div>` : ''}
+              ${deliveryStatusHtml}
+              <div style="font-size: 11px; color: #047857; font-weight: 600; margin-bottom: 4px;">
+                ✓ Fulfillment: ${w.performance?.fulfillmentRate || '98%'} (${w.performance?.completedOrders || 0} orders)
+              </div>
+              ${stockHtml}
+              <div style="display: flex; gap: 6px; margin-top: 8px;">
+                <a 
+                  href="https://www.google.com/maps/dir/?api=1&origin=${currentLat},${currentLng}&destination=${w.latitude},${w.longitude}" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"
+                >
+                  Maps ↗
+                </a>
+              </div>
             </div>
-          </div>
-        `;
+          `;
 
-        const popup = new maplibregl.Popup({ offset: 25 }).setHTML(popupContent);
+          const popup = new maplibregl.Popup({ offset: 25 }).setHTML(popupContent);
 
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([w.longitude, w.latitude])
-          .setPopup(popup)
-          .addTo(mapInstance);
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([w.longitude, w.latitude])
+            .setPopup(popup)
+            .addTo(mapInstance);
 
-        el.addEventListener('click', () => {
-          focusWholesaler(w);
-        });
+          el.addEventListener('click', () => {
+            focusWholesaler(w);
+          });
 
-        markers.push(marker);
-      }
-    });
+          markers.push(marker);
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to update map markers:', err);
+    }
   }
 
   function focusWholesaler(w) {
@@ -437,7 +443,7 @@
 
       // Render route line on MapLibre
       if (mapInstance && browser) {
-        const maplibregl = (await import('maplibre-gl')).default;
+        const maplibregl = await getMapLibre();
 
         // Add or update source
         if (mapInstance.getSource('route-source')) {
@@ -790,6 +796,39 @@
                   </span>
                 {/if}
               </div>
+
+              <!-- Delivery Radius & Proximity Status -->
+              <div class="flex flex-wrap items-center gap-2 mb-2">
+                {#if w.deliveryStatus}
+                  <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1
+                    {w.isDeliveryAvailable 
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'}">
+                    <Truck class="h-3 w-3" />
+                    <span>{w.deliveryStatus} ({w.deliveryRadiusKm || 25} km radius)</span>
+                  </span>
+                {/if}
+              </div>
+
+              <!-- Available Live Stock -->
+              {#if w.availableStock && w.availableStock.length > 0}
+                <div class="p-2.5 rounded-lg bg-app-cardSubtle border border-app-border/60 my-2">
+                  <div class="text-[11px] font-bold text-app-text flex items-center gap-1.5 mb-1.5">
+                    <Package class="h-3.5 w-3.5 text-brand-orange" />
+                    <span>Available Stock:</span>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5">
+                    {#each w.availableStock.slice(0, 4) as stockItem}
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-app-card border border-app-border text-app-text">
+                        <b class="text-brand-orange">{stockItem.productName}</b> - {stockItem.quantity} {stockItem.unit}
+                      </span>
+                    {/each}
+                    {#if w.availableStock.length > 4}
+                      <span class="text-[10px] text-app-textMuted self-center">+{w.availableStock.length - 4} more</span>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
 
               <!-- Performance Summary -->
               <div class="flex items-center gap-3 my-2 text-[11px] text-app-textMuted bg-app-cardSubtle px-2.5 py-1.5 rounded-lg border border-app-border/50">

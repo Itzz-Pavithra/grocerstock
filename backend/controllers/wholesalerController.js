@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Order from '../models/Order.js';
 import Response from '../models/Response.js';
 import StockRequest from '../models/StockRequest.js';
+import Inventory from '../models/Inventory.js';
 
 // Haversine formula to compute great-circle distance in kilometers between two lat/lng points
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -230,6 +231,17 @@ export const getNearbyWholesalers = async (req, res) => {
       const totalOrdersCount = await Order.countDocuments({ wholesaler: w.user });
       const fulfillmentRate = totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : null;
 
+      // Real Inventory stock items for this wholesaler
+      const stockRecords = await Inventory.find({
+        wholesaler: w.user,
+        isAvailable: true,
+        stockQuantity: { $gt: 0 },
+      }).limit(5);
+
+      const deliveryRadius = w.deliveryRadiusKm || 25;
+      const isDeliveryAvailable = distanceKm !== null ? distanceKm <= deliveryRadius : true;
+      const deliveryStatus = isDeliveryAvailable ? 'Delivery Available' : 'Outside Delivery Area';
+
       results.push({
         _id: w._id,
         wholesalerId: w.user,
@@ -242,8 +254,18 @@ export const getNearbyWholesalers = async (req, res) => {
         latitude: lat,
         longitude: lng,
         categoriesSupplied: w.categoriesSupplied || [],
-        deliveryRadiusKm: w.deliveryRadiusKm || 25,
+        deliveryRadiusKm: deliveryRadius,
         distanceKm,
+        isDeliveryAvailable,
+        deliveryStatus,
+        availableStock: stockRecords.map((item) => ({
+          _id: item._id,
+          productName: item.productName,
+          category: item.category,
+          quantity: item.stockQuantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+        })),
         performance: {
           totalOrders: totalOrdersCount,
           completedOrders: completedOrdersCount,
