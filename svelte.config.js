@@ -1,9 +1,4 @@
-import adapterAuto from '@sveltejs/adapter-auto';
-import adapterVercel from '@sveltejs/adapter-vercel';
-
-// Use adapter-vercel on Vercel deployment (Linux environment).
-// On Windows local development, fallback to adapter-auto to avoid Windows symlink EPERM restrictions.
-const useVercelAdapter = Boolean(process.env.VERCEL || process.env.CI) || process.platform !== 'win32';
+import adapter from '@sveltejs/adapter-vercel';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -12,8 +7,9 @@ const config = {
 			filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 	},
 	kit: {
-		adapter: useVercelAdapter ? adapterVercel() : adapterAuto()
+		adapter: adapter()
 	}
 };
 
 export default config;
+
