@@ -697,7 +697,12 @@
       return;
     }
     if (auth.user && auth.user.role !== 'wholesaler') {
-      goto('/unauthorized');
+      if (auth.user.role === 'retailer') {
+        toasts.warning('Retailer accounts cannot access Wholesaler operations. Redirecting to your dashboard.');
+        goto('/retailer');
+      } else {
+        goto('/unauthorized');
+      }
       return;
     }
 
@@ -824,7 +829,7 @@
       <div class="bg-app-card p-5 rounded-2xl border border-app-border shadow-sm hover-lift">
         <span class="text-xs font-bold text-app-muted uppercase tracking-wider">Monthly Revenue</span>
         <div class="text-3xl font-extrabold font-heading text-app-text mt-2">
-          ₹{monthlyRevenue().toLocaleString()}
+          ₹{monthlyRevenue.toLocaleString()}
         </div>
         <span class="text-[10px] text-app-muted mt-1 block">Current month orders</span>
       </div>

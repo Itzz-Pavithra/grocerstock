@@ -177,11 +177,14 @@
       }
 
       auth.setSession(res, res.token);
-      toasts.success(i18n.locale === 'ta' ? 'உள்நுழைவு வெற்றியடைந்தது!' : 'Signed in successfully!');
       
-      if (res.role === 'retailer') goto('/retailer');
-      else if (res.role === 'wholesaler') goto('/wholesaler');
-      else if (res.role === 'admin') goto('/admin');
+      let targetPath = '/';
+      if (res.role === 'retailer') targetPath = '/retailer';
+      else if (res.role === 'wholesaler') targetPath = '/wholesaler';
+      else if (res.role === 'admin') targetPath = '/admin';
+
+      await goto(targetPath);
+      toasts.success(i18n.locale === 'ta' ? 'உள்நுழைவு வெற்றியடைந்தது!' : 'Signed in successfully!');
     } catch (err) {
       if (err.message.includes('not verified') || err.message.includes('OTP')) {
         otpEmail = loginEmail;
@@ -340,14 +343,14 @@
 
       otpSuccess = 'Email verified successfully!';
       auth.setSession(res, res.token);
-      toasts.success('Email verified successfully!');
+      
+      let targetPath = '/';
+      if (res.role === 'retailer') targetPath = '/retailer';
+      else if (res.role === 'wholesaler') targetPath = '/wholesaler';
+      else if (res.role === 'admin') targetPath = '/admin';
 
-      setTimeout(() => {
-        if (res.role === 'retailer') goto('/retailer');
-        else if (res.role === 'wholesaler') goto('/wholesaler');
-        else if (res.role === 'admin') goto('/admin');
-        else goto('/');
-      }, 600);
+      await goto(targetPath);
+      toasts.success('Email verified successfully!');
     } catch (err) {
       otpError = err.message || 'Invalid or expired verification code. Please try again.';
       toasts.error(otpError);
@@ -397,6 +400,14 @@
     }
   }
 
+  $effect(() => {
+    if (auth.token && auth.user) {
+      if (auth.user.role === 'retailer') goto('/retailer');
+      else if (auth.user.role === 'wholesaler') goto('/wholesaler');
+      else if (auth.user.role === 'admin') goto('/admin');
+    }
+  });
+
   onMount(() => {
     if (auth.token && auth.user) {
       if (auth.user.role === 'retailer') goto('/retailer');
@@ -406,6 +417,13 @@
   });
 </script>
 
+{#if auth.token && auth.user}
+  <div class="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-6 bg-app-bg text-app-text">
+    <div class="w-10 h-10 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mb-3"></div>
+    <p class="text-sm font-semibold text-app-text">Authenticated as {auth.user.role || 'user'}</p>
+    <p class="text-xs text-app-muted mt-1">Redirecting to your dashboard...</p>
+  </div>
+{:else}
 <div class="min-h-[calc(100vh-4rem)] flex flex-col lg:flex-row bg-app-bg transition-colors duration-200">
   <!-- Left Side static benefits panel -->
   <div class="lg:w-1/2 bg-brand-olive text-white flex flex-col justify-between p-8 sm:p-16 relative overflow-hidden">
@@ -731,10 +749,10 @@
                     <div class="mt-2.5 space-y-1.5 p-3 bg-app-cardSubtle border border-app-border rounded-xl text-[10px]">
                       <div class="flex justify-between items-center mb-1">
                         <span class="text-app-muted font-bold uppercase text-[9px]">{i18n.t('pwStrength')}:</span>
-                        <span class="font-extrabold {strengthColor()}">{strengthText()}</span>
+                        <span class="font-extrabold {strengthColor}">{strengthText}</span>
                       </div>
                       <div class="w-full h-1.5 bg-app-border rounded-full overflow-hidden">
-                        <div class="h-full {strengthBg()} transition-all duration-300" style="width: {strengthPct}%"></div>
+                        <div class="h-full {strengthBg} transition-all duration-300" style="width: {strengthPct}%"></div>
                       </div>
                       <div class="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-app-muted font-medium">
                         <div class="flex items-center space-x-1">
@@ -902,3 +920,4 @@
     </div>
   </div>
 </div>
+{/if}

@@ -340,7 +340,12 @@
       return;
     }
     if (auth.user && auth.user.role !== 'retailer') {
-      goto('/unauthorized');
+      if (auth.user.role === 'wholesaler') {
+        toasts.warning('Wholesaler accounts cannot access Retailer operations. Redirecting to your dashboard.');
+        goto('/wholesaler');
+      } else {
+        goto('/unauthorized');
+      }
       return;
     }
 
@@ -449,7 +454,7 @@
       <div class="bg-app-card p-5 rounded-2xl border border-app-border shadow-sm hover-lift">
         <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Monthly Spend</span>
         <div class="text-3xl font-extrabold font-heading text-app-text mt-2">
-          ₹{monthlyProcurementSpend().toLocaleString('en-IN')}
+          ₹{monthlyProcurementSpend.toLocaleString('en-IN')}
         </div>
         <span class="text-[10px] text-app-textMuted mt-1 block">Completed & active orders</span>
       </div>
