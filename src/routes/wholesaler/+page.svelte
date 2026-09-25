@@ -201,8 +201,8 @@
   async function loadMyPerformance() {
     performanceLoading = true;
     try {
-      const res = await api.get('/wholesalers/my-performance');
-      myPerformance = res.performance || null;
+      const card = res.scorecard || res.performance;
+      myPerformance = card?.metrics ? { ...card, ...card.metrics } : (card || null);
     } catch (err) {
       console.error('Failed to load performance scorecard:', err);
       toasts.error('Failed to load performance metrics');

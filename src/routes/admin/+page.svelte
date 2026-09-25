@@ -382,7 +382,16 @@
                         {user.isActive ? 'Active' : 'Deactivated'}
                       </span>
                     </td>
-                    <td class="p-3.5 text-right">
+                    <td class="p-3.5 text-right space-x-1.5">
+                      {#if user.role === 'wholesaler'}
+                        <button 
+                          onclick={() => { selectedWholesaler = user; showScorecardModal = true; }}
+                          class="px-2.5 py-1 text-xs font-bold rounded-lg bg-brand-orange/10 text-brand-orange hover:bg-brand-orange/20 transition-all"
+                          title="View verified supplier performance scorecard"
+                        >
+                          ⭐ Scorecard
+                        </button>
+                      {/if}
                       {#if user.role !== 'admin'}
                         <button 
                           onclick={() => toggleUserActive(user._id)}
@@ -636,3 +645,6 @@
     </div>
   </div>
 {/if}
+
+<!-- Supplier Performance Scorecard Modal -->
+<SupplierScorecardModal bind:show={showScorecardModal} wholesaler={selectedWholesaler} />

@@ -142,7 +142,7 @@ export const getWholesalerPerformance = async (req, res) => {
     if (!scorecard) {
       return res.status(404).json({ success: false, message: 'Wholesaler not found' });
     }
-    res.json({ success: true, scorecard });
+    res.json({ success: true, scorecard, performance: scorecard });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -154,7 +154,7 @@ export const getMyPerformance = async (req, res) => {
     if (!scorecard) {
       return res.status(404).json({ success: false, message: 'Wholesaler profile not found' });
     }
-    res.json({ success: true, scorecard });
+    res.json({ success: true, scorecard, performance: scorecard });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

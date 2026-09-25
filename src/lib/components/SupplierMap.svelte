@@ -46,8 +46,15 @@
   const hasMapTilerKey = Boolean(mapTilerKey && mapTilerKey !== 'YOUR_MAPTILER_API_KEY');
 
   // Fallback / center coordinates (Default: Bengaluru 12.9716, 77.5946 if not provided)
-  let currentLat = $state(userLocation?.latitude || 12.9716);
-  let currentLng = $state(userLocation?.longitude || 77.5946);
+  let currentLat = $state(12.9716);
+  let currentLng = $state(77.5946);
+
+  $effect(() => {
+    if (userLocation?.latitude && userLocation?.longitude) {
+      currentLat = userLocation.latitude;
+      currentLng = userLocation.longitude;
+    }
+  });
 
   async function loadWholesalers() {
     loading = true;
@@ -358,11 +365,14 @@
         <div class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
           {#each wholesalers as w (w._id)}
             <div
+              role="button"
+              tabindex="0"
               class="p-4 rounded-xl border transition-all text-left group cursor-pointer
                 {selectedWholesaler?._id === w._id
                   ? 'bg-brand-orange/5 border-brand-orange shadow-sm'
                   : 'bg-app-card border-app-border hover:border-brand-orange/50 hover:bg-app-cardSubtle'}"
               onclick={() => focusWholesaler(w)}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') focusWholesaler(w); }}
             >
               <div class="flex items-start justify-between gap-2 mb-1.5">
                 <div>
