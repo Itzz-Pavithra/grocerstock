@@ -14,7 +14,21 @@ const generateToken = (id) => {
 };
 
 export const register = async (req, res) => {
-  const { email, password, role, storeName, companyName, phone, address, businessRegNo } = req.body || {};
+  const {
+    email,
+    password,
+    role,
+    storeName,
+    companyName,
+    phone,
+    address,
+    businessRegNo,
+    city,
+    state,
+    postalCode,
+    latitude,
+    longitude,
+  } = req.body || {};
 
   try {
     // 1. Strict Server-Side Validation
@@ -51,6 +65,23 @@ export const register = async (req, res) => {
 
     if (!address || typeof address !== 'string' || !address.trim()) {
       return res.status(400).json({ success: false, message: 'Address is required.' });
+    }
+
+    let parsedLat = undefined;
+    let parsedLng = undefined;
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      const num = parseFloat(latitude);
+      if (isNaN(num) || num < -90 || num > 90) {
+        return res.status(400).json({ success: false, message: 'Invalid latitude. Must be between -90 and 90.' });
+      }
+      parsedLat = num;
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      const num = parseFloat(longitude);
+      if (isNaN(num) || num < -180 || num > 180) {
+        return res.status(400).json({ success: false, message: 'Invalid longitude. Must be between -180 and 180.' });
+      }
+      parsedLng = num;
     }
 
     if (role === 'retailer') {
@@ -128,6 +159,11 @@ export const register = async (req, res) => {
           businessRegNo: businessRegNo ? businessRegNo.trim() : '',
           phone: phone.trim(),
           address: address.trim(),
+          city: city ? city.trim() : '',
+          state: state ? state.trim() : '',
+          postalCode: postalCode ? postalCode.trim() : '',
+          latitude: parsedLat,
+          longitude: parsedLng,
         },
         otpHash,
         otpExpires,
@@ -212,20 +248,64 @@ export const verifyOtp = async (req, res) => {
 
       // Create role-specific profile
       if (pending.role === 'retailer') {
-        await Retailer.create({
+        const profilePayload = {
           user: user._id,
           storeName: pending.profileData.storeName,
           phone: pending.profileData.phone,
           address: pending.profileData.address,
-        });
+          city: pending.profileData.city || '',
+          state: pending.profileData.state || '',
+          postalCode: pending.profileData.postalCode || '',
+        };
+        if (
+          pending.profileData.latitude !== undefined &&
+          pending.profileData.longitude !== undefined &&
+          !isNaN(pending.profileData.latitude) &&
+          !isNaN(pending.profileData.longitude)
+        ) {
+          profilePayload.latitude = pending.profileData.latitude;
+          profilePayload.longitude = pending.profileData.longitude;
+          profilePayload.location = {
+            type: 'Point',
+            coordinates: [pending.profileData.longitude, pending.profileData.latitude],
+            address: pending.profileData.address,
+            city: pending.profileData.city || '',
+            state: pending.profileData.state || '',
+            country: 'India',
+            postalCode: pending.profileData.postalCode || '',
+          };
+        }
+        await Retailer.create(profilePayload);
       } else if (pending.role === 'wholesaler') {
-        await Wholesaler.create({
+        const profilePayload = {
           user: user._id,
           companyName: pending.profileData.companyName,
           phone: pending.profileData.phone,
           address: pending.profileData.address,
           businessRegNo: pending.profileData.businessRegNo,
-        });
+          city: pending.profileData.city || '',
+          state: pending.profileData.state || '',
+          postalCode: pending.profileData.postalCode || '',
+        };
+        if (
+          pending.profileData.latitude !== undefined &&
+          pending.profileData.longitude !== undefined &&
+          !isNaN(pending.profileData.latitude) &&
+          !isNaN(pending.profileData.longitude)
+        ) {
+          profilePayload.latitude = pending.profileData.latitude;
+          profilePayload.longitude = pending.profileData.longitude;
+          profilePayload.location = {
+            type: 'Point',
+            coordinates: [pending.profileData.longitude, pending.profileData.latitude],
+            address: pending.profileData.address,
+            city: pending.profileData.city || '',
+            state: pending.profileData.state || '',
+            country: 'India',
+            postalCode: pending.profileData.postalCode || '',
+          };
+        }
+        await Wholesaler.create(profilePayload);
       }
 
       // Clean up pending registration
@@ -470,8 +550,22 @@ export const updateProfile = async (req, res) => {
     }
 
     let profile = null;
-    const lat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : undefined;
-    const lng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : undefined;
+    let validLat = undefined;
+    let validLng = undefined;
+    if (latitude !== undefined && latitude !== null && latitude !== '') {
+      const num = parseFloat(latitude);
+      if (isNaN(num) || num < -90 || num > 90) {
+        return res.status(400).json({ success: false, message: 'Invalid latitude. Must be between -90 and 90.' });
+      }
+      validLat = num;
+    }
+    if (longitude !== undefined && longitude !== null && longitude !== '') {
+      const num = parseFloat(longitude);
+      if (isNaN(num) || num < -180 || num > 180) {
+        return res.status(400).json({ success: false, message: 'Invalid longitude. Must be between -180 and 180.' });
+      }
+      validLng = num;
+    }
 
     if (user.role === 'retailer') {
       profile = await Retailer.findOne({ user: user._id });
@@ -482,14 +576,18 @@ export const updateProfile = async (req, res) => {
         if (city !== undefined) profile.city = city.trim();
         if (state !== undefined) profile.state = state.trim();
         if (postalCode !== undefined) profile.postalCode = postalCode.trim();
-        if (lat !== undefined && !isNaN(lat)) {
-          profile.latitude = lat;
-        }
-        if (lng !== undefined && !isNaN(lng)) {
-          profile.longitude = lng;
-        }
-        if (lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
-          profile.location = { type: 'Point', coordinates: [lng, lat] };
+        if (validLat !== undefined) profile.latitude = validLat;
+        if (validLng !== undefined) profile.longitude = validLng;
+        if (validLat !== undefined && validLng !== undefined) {
+          profile.location = {
+            type: 'Point',
+            coordinates: [validLng, validLat],
+            address: profile.address,
+            city: profile.city || '',
+            state: profile.state || '',
+            country: 'India',
+            postalCode: profile.postalCode || '',
+          };
         }
         await profile.save();
       }
@@ -502,14 +600,18 @@ export const updateProfile = async (req, res) => {
         if (city !== undefined) profile.city = city.trim();
         if (state !== undefined) profile.state = state.trim();
         if (postalCode !== undefined) profile.postalCode = postalCode.trim();
-        if (lat !== undefined && !isNaN(lat)) {
-          profile.latitude = lat;
-        }
-        if (lng !== undefined && !isNaN(lng)) {
-          profile.longitude = lng;
-        }
-        if (lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
-          profile.location = { type: 'Point', coordinates: [lng, lat] };
+        if (validLat !== undefined) profile.latitude = validLat;
+        if (validLng !== undefined) profile.longitude = validLng;
+        if (validLat !== undefined && validLng !== undefined) {
+          profile.location = {
+            type: 'Point',
+            coordinates: [validLng, validLat],
+            address: profile.address,
+            city: profile.city || '',
+            state: profile.state || '',
+            country: 'India',
+            postalCode: profile.postalCode || '',
+          };
         }
         if (categoriesSupplied && Array.isArray(categoriesSupplied)) {
           profile.categoriesSupplied = categoriesSupplied;

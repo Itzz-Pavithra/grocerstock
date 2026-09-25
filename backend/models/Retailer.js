@@ -54,14 +54,21 @@ const retailerSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        default: [77.5946, 12.9716],
+        default: undefined,
       },
+      address: { type: String, default: '' },
+      city: { type: String, default: '' },
+      state: { type: String, default: '' },
+      country: { type: String, default: '' },
+      postalCode: { type: String, default: '' },
     },
   },
   {
     timestamps: true,
   }
 );
+
+retailerSchema.index({ location: '2dsphere' });
 
 const Retailer = mongoose.models.Retailer || mongoose.model('Retailer', retailerSchema);
 export default Retailer;

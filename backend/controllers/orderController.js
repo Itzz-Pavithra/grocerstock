@@ -157,13 +157,15 @@ export const getOrderTracking = async (req, res) => {
     const retailerProfile = await Retailer.findOne({ user: order.retailer });
     const wholesalerProfile = await Wholesaler.findOne({ user: order.wholesaler });
 
+    const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
+
     const timelineSteps = [
       { key: 'accepted', label: 'Order Accepted', timestamp: order.createdAt },
-      { key: 'processing', label: 'Processing', timestamp: order.statusHistory.find(h => h.status === 'processing')?.updatedAt || null },
-      { key: 'packed', label: 'Packed', timestamp: order.packedAt || order.statusHistory.find(h => h.status === 'packed')?.updatedAt || null },
-      { key: 'shipped', label: 'Shipped', timestamp: order.shippedAt || order.statusHistory.find(h => h.status === 'shipped')?.updatedAt || null },
-      { key: 'out_for_delivery', label: 'Out for Delivery', timestamp: order.outForDeliveryAt || order.statusHistory.find(h => h.status === 'out_for_delivery')?.updatedAt || null },
-      { key: 'delivered', label: 'Delivered', timestamp: order.deliveredAt || order.actualDeliveryDate || order.statusHistory.find(h => h.status === 'delivered')?.updatedAt || null },
+      { key: 'processing', label: 'Processing', timestamp: history.find(h => h.status === 'processing')?.updatedAt || null },
+      { key: 'packed', label: 'Packed', timestamp: order.packedAt || history.find(h => h.status === 'packed')?.updatedAt || null },
+      { key: 'shipped', label: 'Shipped', timestamp: order.shippedAt || history.find(h => h.status === 'shipped')?.updatedAt || null },
+      { key: 'out_for_delivery', label: 'Out for Delivery', timestamp: order.outForDeliveryAt || history.find(h => h.status === 'out_for_delivery')?.updatedAt || null },
+      { key: 'delivered', label: 'Delivered', timestamp: order.deliveredAt || order.actualDeliveryDate || history.find(h => h.status === 'delivered')?.updatedAt || null },
     ];
 
     res.json({
@@ -184,7 +186,7 @@ export const getOrderTracking = async (req, res) => {
         wholesalerCompany: wholesalerProfile ? wholesalerProfile.companyName : 'Wholesaler',
         wholesalerPhone: wholesalerProfile ? wholesalerProfile.phone : '',
         timelineSteps,
-        statusHistory: order.statusHistory,
+        statusHistory: history,
       },
     });
   } catch (error) {

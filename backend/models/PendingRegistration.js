@@ -24,6 +24,11 @@ const pendingRegistrationSchema = new mongoose.Schema(
       businessRegNo: { type: String, trim: true, default: '' },
       phone: { type: String, required: true, trim: true },
       address: { type: String, required: true, trim: true },
+      city: { type: String, trim: true, default: '' },
+      state: { type: String, trim: true, default: '' },
+      postalCode: { type: String, trim: true, default: '' },
+      latitude: { type: Number },
+      longitude: { type: Number },
     },
     otpHash: {
       type: String,

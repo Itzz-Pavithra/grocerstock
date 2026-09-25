@@ -35,6 +35,7 @@
   let recommendationsLoading = $state(false);
   let dashboardLoading = $state(true);
   let ordersLoading = $state(false);
+  let retailerProfile = $state(null);
 
   // Pagination & Filters State
   let currentPage = $state(1);
@@ -345,6 +346,14 @@
     loadOrders();
     loadCatalogs();
     loadRecommendations();
+
+    api.get('/auth/me').then((res) => {
+      if (res && res.profile) {
+        retailerProfile = res.profile;
+      }
+    }).catch((err) => {
+      console.warn('Could not load profile location:', err);
+    });
   });
 </script>
 
@@ -1011,6 +1020,7 @@
     {:else if activeTab === 'map'}
       <div class="space-y-4">
         <SupplierMap 
+          userLocation={retailerProfile}
           categories={categories}
           onSelectSupplier={(w) => {
             reqRemarks = `Preferred Supplier: ${w.companyName}`;

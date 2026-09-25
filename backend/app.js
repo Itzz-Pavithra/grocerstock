@@ -10,6 +10,7 @@ import commonRoutes from './routes/common.js';
 import orderRoutes from './routes/orders.js';
 import inventoryRoutes from './routes/inventory.js';
 import wholesalerRoutes from './routes/wholesalers.js';
+import locationRoutes from './routes/location.js';
 
 const app = express();
 
@@ -59,6 +60,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/wholesalers', wholesalerRoutes);
+app.use('/api/location', locationRoutes);
+app.use('/api/directions', locationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/common', commonRoutes);
 

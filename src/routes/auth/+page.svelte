@@ -30,6 +30,48 @@
   let regLoading = $state(false);
   let showRegPassword = $state(false);
   let showConfirmPassword = $state(false);
+  let regCity = $state('');
+  let regState = $state('');
+  let regPostalCode = $state('');
+  let regLat = $state(null);
+  let regLng = $state(null);
+  let locatingReg = $state(false);
+
+  function detectRegistrationLocation() {
+    if (!navigator.geolocation) {
+      toasts.error('Geolocation is not supported by your browser.');
+      return;
+    }
+    locatingReg = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        locatingReg = false;
+        regLat = Number(pos.coords.latitude.toFixed(6));
+        regLng = Number(pos.coords.longitude.toFixed(6));
+        try {
+          const revRes = await api.get(`/location/reverse?lat=${regLat}&lng=${regLng}`);
+          if (revRes.success && revRes.data) {
+            if (revRes.data.formattedAddress) address = revRes.data.formattedAddress;
+            if (revRes.data.city) regCity = revRes.data.city;
+            if (revRes.data.state) regState = revRes.data.state;
+            if (revRes.data.postalCode) regPostalCode = revRes.data.postalCode;
+            toasts.success(`Location detected: ${revRes.data.city || revRes.data.formattedAddress}`);
+          }
+        } catch {
+          toasts.info('GPS coordinates acquired.');
+        }
+      },
+      (err) => {
+        locatingReg = false;
+        if (err.code === 1) {
+          toasts.warning('Location permission was denied. Please enter address manually.');
+        } else {
+          toasts.error('Unable to retrieve location. Please enter manually.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
 
   // OTP State
   let otpEmail = $state('');
@@ -219,7 +261,12 @@
         password: regPassword,
         role: regRole,
         phone,
-        address
+        address,
+        city: regCity,
+        state: regState,
+        postalCode: regPostalCode,
+        latitude: regLat,
+        longitude: regLng,
       };
 
       if (regRole === 'retailer') {
@@ -788,7 +835,18 @@
                 </div>
 
                 <div>
-                  <label for="address" class="block text-xs font-bold text-app-text uppercase tracking-wider">{i18n.t('addressLabel')}</label>
+                  <div class="flex items-center justify-between">
+                    <label for="address" class="block text-xs font-bold text-app-text uppercase tracking-wider">{i18n.t('addressLabel')}</label>
+                    <button
+                      type="button"
+                      onclick={detectRegistrationLocation}
+                      disabled={locatingReg}
+                      class="text-[11px] font-semibold text-brand-orange hover:underline transition flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <span>🎯</span>
+                      <span>{locatingReg ? 'Detecting...' : 'Use My GPS Location'}</span>
+                    </button>
+                  </div>
                   <input 
                     id="address"
                     type="text" 
@@ -796,6 +854,29 @@
                     placeholder="456 Industrial Way, Suite A"
                     class="mt-1 block w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-sm text-app-text focus:outline-none focus:ring-2 focus:ring-brand-orange transition-all"
                   />
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label for="reg-city" class="block text-xs font-bold text-app-text uppercase tracking-wider">City</label>
+                    <input 
+                      id="reg-city"
+                      type="text" 
+                      bind:value={regCity}
+                      placeholder="Salem"
+                      class="mt-1 block w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-sm text-app-text focus:outline-none focus:ring-2 focus:ring-brand-orange transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label for="reg-state" class="block text-xs font-bold text-app-text uppercase tracking-wider">State</label>
+                    <input 
+                      id="reg-state"
+                      type="text" 
+                      bind:value={regState}
+                      placeholder="Tamil Nadu"
+                      class="mt-1 block w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-sm text-app-text focus:outline-none focus:ring-2 focus:ring-brand-orange transition-all"
+                    />
+                  </div>
                 </div>
 
                 <button 

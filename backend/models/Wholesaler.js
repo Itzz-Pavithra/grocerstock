@@ -54,8 +54,13 @@ const wholesalerSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        default: [77.5946, 12.9716],
+        default: undefined,
       },
+      address: { type: String, default: '' },
+      city: { type: String, default: '' },
+      state: { type: String, default: '' },
+      country: { type: String, default: '' },
+      postalCode: { type: String, default: '' },
     },
     categoriesSupplied: {
       type: [String],
@@ -75,6 +80,8 @@ const wholesalerSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+wholesalerSchema.index({ location: '2dsphere' });
 
 const Wholesaler = mongoose.models.Wholesaler || mongoose.model('Wholesaler', wholesalerSchema);
 export default Wholesaler;

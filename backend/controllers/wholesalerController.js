@@ -129,6 +129,7 @@ async function computeWholesalerScorecard(userId) {
       averageDeliveryDays: averageDeliveryDays !== null ? `${averageDeliveryDays} days` : 'N/A',
       averageDeliveryDaysNumber: averageDeliveryDays,
       avgQuotationTurnaroundHours: avgQuotationTurnaroundHours !== null ? `${avgQuotationTurnaroundHours} hrs` : 'N/A',
+      quotationResponseTimeHours: avgQuotationTurnaroundHours,
       totalQuotationsSubmitted: wholesalerResponses.length,
     },
     message: hasData ? null : 'Insufficient historical order records to evaluate supplier performance',
@@ -200,13 +201,16 @@ export const getNearbyWholesalers = async (req, res) => {
         continue;
       }
 
-      // Filter by search query
-      if (search) {
-        const query = search.toLowerCase();
-        const matchesName = w.companyName.toLowerCase().includes(query);
+      // Filter by search query (company, address, city, state, postal code, categories)
+      if (search && search.trim()) {
+        const query = search.trim().toLowerCase();
+        const matchesName = (w.companyName || '').toLowerCase().includes(query);
+        const matchesAddress = (w.address || '').toLowerCase().includes(query);
         const matchesCity = (w.city || '').toLowerCase().includes(query);
-        const matchesCat = (w.categoriesSupplied || []).some((c) => c.toLowerCase().includes(query));
-        if (!matchesName && !matchesCity && !matchesCat) {
+        const matchesState = (w.state || '').toLowerCase().includes(query);
+        const matchesPostal = (w.postalCode || '').toLowerCase().includes(query);
+        const matchesCat = (w.categoriesSupplied || []).some((c) => (c || '').toLowerCase().includes(query));
+        if (!matchesName && !matchesAddress && !matchesCity && !matchesState && !matchesPostal && !matchesCat) {
           continue;
         }
       }

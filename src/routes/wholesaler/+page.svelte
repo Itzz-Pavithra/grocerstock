@@ -1,5 +1,6 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/auth.svelte.js';
   import { api } from '$lib/api.js';
@@ -8,9 +9,35 @@
   import DeliveryTrackingModal from '$lib/components/DeliveryTrackingModal.svelte';
   import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
 
-  // Active Tab: 'requests' | 'orders' | 'inventory' | 'predictions' | 'performance'
+  // Active Tab: 'requests' | 'orders' | 'inventory' | 'predictions' | 'performance' | 'location'
   let activeTab = $state('requests');
   let dashboardLoading = $state(true);
+
+  // Wholesaler Business Location State
+  let wholesalerProfile = $state(null);
+  let locAddress = $state('');
+  let locCity = $state('');
+  let locState = $state('');
+  let locPostalCode = $state('');
+  let locLat = $state(11.6643); // Salem default
+  let locLng = $state(78.1460);
+  let locRadius = $state(50);
+  let locSaving = $state(false);
+  let locLocating = $state(false);
+
+  // Location search autocomplete
+  let locSearchQuery = $state('');
+  let locSearchResults = $state([]);
+  let locSearching = $state(false);
+  let showLocDropdown = $state(false);
+  let locDebounceTimer = null;
+
+  // Location Map container & instance
+  let locMapContainer = $state(null);
+  let locMapInstance = null;
+  let locMapMarker = null;
+  let locMapLoading = $state(false);
+  let locMapError = $state(null);
 
   // Data States
   let incomingRequests = $state([]);
@@ -201,6 +228,7 @@
   async function loadMyPerformance() {
     performanceLoading = true;
     try {
+      const res = await api.get('/wholesalers/my-performance');
       const card = res.scorecard || res.performance;
       myPerformance = card?.metrics ? { ...card, ...card.metrics } : (card || null);
     } catch (err) {
@@ -401,6 +429,265 @@
     });
   }
 
+  const mapTilerKey = (import.meta.env.VITE_MAPTILER_API_KEY || '').trim();
+  const hasMapTilerKey = Boolean(mapTilerKey && mapTilerKey !== 'YOUR_MAPTILER_API_KEY');
+
+  const osmRasterStyle = {
+    version: 8,
+    sources: {
+      'osm-tiles': {
+        type: 'raster',
+        tiles: [
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        ],
+        tileSize: 256,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+      }
+    },
+    layers: [
+      {
+        id: 'osm-tiles',
+        type: 'raster',
+        source: 'osm-tiles',
+        minzoom: 0,
+        maxzoom: 19
+      }
+    ]
+  };
+
+  async function loadProfileLocation() {
+    try {
+      const res = await api.get('/auth/me');
+      if (res && res.profile) {
+        wholesalerProfile = res.profile;
+        if (res.profile.address) locAddress = res.profile.address;
+        if (res.profile.city) locCity = res.profile.city;
+        if (res.profile.state) locState = res.profile.state;
+        if (res.profile.postalCode) locPostalCode = res.profile.postalCode;
+        if (res.profile.latitude !== undefined && res.profile.latitude !== null) {
+          locLat = Number(res.profile.latitude);
+        }
+        if (res.profile.longitude !== undefined && res.profile.longitude !== null) {
+          locLng = Number(res.profile.longitude);
+        }
+        if (res.profile.deliveryRadiusKm !== undefined) {
+          locRadius = Number(res.profile.deliveryRadiusKm);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load profile location:', err);
+    }
+  }
+
+  async function initLocationMap() {
+    await new Promise(r => setTimeout(r, 120));
+    if (!browser || !locMapContainer) return;
+
+    if (locMapInstance) {
+      locMapInstance.resize();
+      return;
+    }
+
+    locMapLoading = true;
+    try {
+      const maplibregl = (await import('maplibre-gl')).default;
+      const mapStyle = hasMapTilerKey
+        ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${mapTilerKey}`
+        : osmRasterStyle;
+
+      locMapInstance = new maplibregl.Map({
+        container: locMapContainer,
+        style: mapStyle,
+        center: [locLng, locLat],
+        zoom: 13,
+        attributionControl: false,
+      });
+
+      locMapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+
+      locMapInstance.on('load', () => {
+        locMapLoading = false;
+        renderLocMarker(maplibregl);
+      });
+
+      locMapInstance.on('click', async (e) => {
+        const { lng, lat } = e.lngLat;
+        locLng = Number(lng.toFixed(6));
+        locLat = Number(lat.toFixed(6));
+        renderLocMarker(maplibregl);
+        reverseGeocodeCoords(locLat, locLng);
+      });
+    } catch (err) {
+      console.error('Location map failed to load:', err);
+      locMapError = err.message || 'Map failed to load';
+      locMapLoading = false;
+    }
+  }
+
+  function renderLocMarker(maplibregl) {
+    if (!locMapInstance || !browser) return;
+    if (locMapMarker) locMapMarker.remove();
+
+    const el = document.createElement('div');
+    el.className = 'cursor-pointer';
+    el.innerHTML = `
+      <div style="background-color: #FD6F2F; color: white; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+    `;
+
+    locMapMarker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat([locLng, locLat])
+      .addTo(locMapInstance);
+
+    locMapMarker.on('dragend', () => {
+      const lngLat = locMapMarker.getLngLat();
+      locLng = Number(lngLat.lng.toFixed(6));
+      locLat = Number(lngLat.lat.toFixed(6));
+      reverseGeocodeCoords(locLat, locLng);
+    });
+  }
+
+  async function reverseGeocodeCoords(lat, lng) {
+    try {
+      const res = await api.get(`/location/reverse?lat=${lat}&lng=${lng}`);
+      if (res.success && res.data) {
+        if (res.data.formattedAddress) locAddress = res.data.formattedAddress;
+        if (res.data.city) locCity = res.data.city;
+        if (res.data.state) locState = res.data.state;
+        if (res.data.postalCode) locPostalCode = res.data.postalCode;
+        toasts.info(`Address updated: ${res.data.city || res.data.formattedAddress}`);
+      }
+    } catch (err) {
+      console.warn('Reverse geocode error:', err);
+    }
+  }
+
+  function handleLocSearchInput(e) {
+    const val = e.target.value;
+    locSearchQuery = val;
+    if (locDebounceTimer) clearTimeout(locDebounceTimer);
+
+    if (!val || val.trim().length < 2) {
+      locSearchResults = [];
+      showLocDropdown = false;
+      return;
+    }
+
+    locDebounceTimer = setTimeout(async () => {
+      locSearching = true;
+      try {
+        const res = await api.get(`/location/search?q=${encodeURIComponent(val.trim())}`);
+        if (res.success && Array.isArray(res.data)) {
+          locSearchResults = res.data;
+          showLocDropdown = res.data.length > 0;
+        } else {
+          locSearchResults = [];
+          showLocDropdown = false;
+        }
+      } catch (err) {
+        console.error('Loc search error:', err);
+      } finally {
+        locSearching = false;
+      }
+    }, 350);
+  }
+
+  async function selectLocPlace(place) {
+    locLat = Number(place.latitude);
+    locLng = Number(place.longitude);
+    locAddress = place.formattedAddress || place.name;
+    if (place.city) locCity = place.city;
+    if (place.state) locState = place.state;
+    if (place.postalCode) locPostalCode = place.postalCode;
+    locSearchQuery = place.name;
+    showLocDropdown = false;
+    locSearchResults = [];
+
+    if (locMapInstance && browser) {
+      locMapInstance.flyTo({ center: [locLng, locLat], zoom: 14, essential: true });
+      const maplibregl = (await import('maplibre-gl')).default;
+      renderLocMarker(maplibregl);
+    }
+    toasts.success(`Selected: ${place.name}`);
+  }
+
+  function requestWholesalerDeviceLocation() {
+    if (!navigator.geolocation) {
+      toasts.error('Geolocation is not supported by your browser. Please search your address manually.');
+      return;
+    }
+
+    locLocating = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        locLocating = false;
+        locLat = Number(pos.coords.latitude.toFixed(6));
+        locLng = Number(pos.coords.longitude.toFixed(6));
+
+        if (locMapInstance && browser) {
+          locMapInstance.flyTo({ center: [locLng, locLat], zoom: 14, essential: true });
+          const maplibregl = (await import('maplibre-gl')).default;
+          renderLocMarker(maplibregl);
+        }
+
+        await reverseGeocodeCoords(locLat, locLng);
+        toasts.success('Location updated from device GPS');
+      },
+      (err) => {
+        locLocating = false;
+        if (err.code === 1) {
+          toasts.warning('Location permission was denied. Search for your location manually.');
+        } else if (err.code === 2) {
+          toasts.error('Location information is unavailable. Please search manually.');
+        } else if (err.code === 3) {
+          toasts.error('Location request timed out. Please try again or search manually.');
+        } else {
+          toasts.error('Unable to retrieve location. Please search manually.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  async function handleSaveLocation() {
+    if (!locAddress || !locAddress.trim()) {
+      toasts.error('Please provide a business address.');
+      return;
+    }
+    if (locLat < -90 || locLat > 90 || locLng < -180 || locLng > 180) {
+      toasts.error('Coordinates are out of valid geographic range.');
+      return;
+    }
+
+    locSaving = true;
+    try {
+      const res = await api.put('/auth/profile', {
+        address: locAddress.trim(),
+        city: locCity.trim(),
+        state: locState.trim(),
+        postalCode: locPostalCode.trim(),
+        latitude: locLat,
+        longitude: locLng,
+        deliveryRadiusKm: locRadius,
+      });
+
+      if (res.success) {
+        wholesalerProfile = res.profile;
+        toasts.success('Warehouse business location saved successfully to database!');
+      } else {
+        toasts.error(res.message || 'Failed to save location');
+      }
+    } catch (err) {
+      console.error('Save location error:', err);
+      toasts.error(err.message || 'Failed to update business location');
+    } finally {
+      locSaving = false;
+    }
+  }
+
   onMount(() => {
     if (!auth.token) {
       goto('/auth');
@@ -416,6 +703,15 @@
     loadInventory();
     loadPredictions();
     loadMyPerformance();
+    loadProfileLocation();
+  });
+
+  onDestroy(() => {
+    if (locDebounceTimer) clearTimeout(locDebounceTimer);
+    if (locMapInstance) {
+      locMapInstance.remove();
+      locMapInstance = null;
+    }
   });
 </script>
 
@@ -467,6 +763,12 @@
           class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'performance' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
         >
           ⭐ Performance Scorecard
+        </button>
+        <button 
+          onclick={() => { activeTab = 'location'; initLocationMap(); }}
+          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'location' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
+        >
+          📍 Warehouse Location
         </button>
       </div>
     </div>
@@ -545,6 +847,12 @@
         class="px-4 py-2 text-xs font-bold bg-app-cardSubtle border border-app-border text-app-text rounded-xl hover:bg-app-border/40 transition hover-lift"
       >
         🚚 Manage Dispatches
+      </button>
+      <button 
+        onclick={() => { activeTab = 'location'; initLocationMap(); }}
+        class="px-4 py-2 text-xs font-bold bg-app-cardSubtle border border-app-border text-app-text rounded-xl hover:bg-app-border/40 transition hover-lift"
+      >
+        📍 Set Warehouse Location
       </button>
     </div>
 
@@ -970,6 +1278,207 @@
           </div>
         {/if}
       </div>
+
+    {:else if activeTab === 'location'}
+      <!-- Warehouse Location Management Panel -->
+      <div class="bg-app-card p-6 rounded-3xl border border-app-border shadow-sm space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-app-border pb-4">
+          <div>
+            <h2 class="text-xl font-bold font-heading text-app-text flex items-center gap-2">
+              <span>📍</span>
+              <span>Warehouse & Business Location</span>
+            </h2>
+            <p class="text-xs text-app-muted mt-1">
+              Set your precise warehouse coordinates and service radius. Nearby retailers use this to discover you and calculate road routes.
+            </p>
+          </div>
+          <button
+            type="button"
+            onclick={requestWholesalerDeviceLocation}
+            disabled={locLocating}
+            class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+          >
+            <span>🎯</span>
+            <span>{locLocating ? 'Detecting GPS...' : 'Use Current Device Location'}</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Left: Interactive Map (7 cols) -->
+          <div class="lg:col-span-7 flex flex-col space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-app-text">Pinpoint Warehouse on Map</span>
+              <span class="text-app-muted text-[11px]">Click or drag marker to adjust</span>
+            </div>
+
+            <div class="bg-app-cardSubtle border border-app-border rounded-2xl overflow-hidden min-h-[420px] relative flex flex-col">
+              {#if locMapLoading}
+                <div class="absolute inset-0 bg-app-card/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+                  <div class="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mb-2"></div>
+                  <p class="text-xs font-medium text-app-textMuted">Loading interactive map...</p>
+                </div>
+              {/if}
+
+              {#if locMapError}
+                <div class="absolute inset-0 bg-app-card z-10 flex flex-col items-center justify-center p-6 text-center">
+                  <p class="text-sm font-semibold text-app-text mb-1">Map Notice</p>
+                  <p class="text-xs text-app-muted max-w-sm mb-3">{locMapError}</p>
+                  <button
+                    type="button"
+                    onclick={initLocationMap}
+                    class="px-3 py-1 text-xs font-semibold rounded-lg bg-brand-orange text-white"
+                  >
+                    Retry Map
+                  </button>
+                </div>
+              {/if}
+
+              <div bind:this={locMapContainer} class="w-full h-full min-h-[420px] flex-1"></div>
+
+              <div class="p-2.5 bg-app-card border-t border-app-border text-[11px] text-app-muted flex items-center justify-between">
+                <span>Coordinates: <b>{locLat.toFixed(5)}, {locLng.toFixed(5)}</b></span>
+                <span class="text-brand-orange font-semibold">📍 Drag or Click to Relocate</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Place Search & Form Fields (5 cols) -->
+          <div class="lg:col-span-5 space-y-4">
+            <!-- Place / City Search Box -->
+            <div class="space-y-1 relative">
+              <label for="loc-search-box" class="block text-xs font-bold text-app-text uppercase tracking-wider">
+                Search City or Business Address
+              </label>
+              <div class="relative">
+                <input
+                  id="loc-search-box"
+                  type="text"
+                  value={locSearchQuery}
+                  oninput={handleLocSearchInput}
+                  onfocus={() => { if (locSearchResults.length > 0) showLocDropdown = true; }}
+                  placeholder="e.g. Salem, Chennai, Coimbatore..."
+                  class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
+                />
+                {#if locSearching}
+                  <span class="absolute right-3 top-2.5 text-xs text-brand-orange animate-pulse">Searching...</span>
+                {/if}
+              </div>
+
+              {#if showLocDropdown && locSearchResults.length > 0}
+                <div class="absolute left-0 right-0 top-full mt-1 bg-app-card border border-app-border rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto divide-y divide-app-border">
+                  {#each locSearchResults as place}
+                    <button
+                      type="button"
+                      class="w-full text-left p-2.5 hover:bg-app-cardSubtle text-xs transition flex items-start space-x-2"
+                      onclick={() => selectLocPlace(place)}
+                    >
+                      <span class="text-brand-orange shrink-0">📍</span>
+                      <div class="truncate">
+                        <span class="font-semibold text-app-text block truncate">{place.name}</span>
+                        <span class="text-[11px] text-app-muted truncate block">{place.formattedAddress}</span>
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+
+            <!-- Form Fields -->
+            <div class="space-y-3 pt-2 border-t border-app-border">
+              <div>
+                <label for="loc-address-input" class="block text-[11px] font-bold text-app-muted uppercase mb-1">
+                  Street / Warehouse Address *
+                </label>
+                <textarea
+                  id="loc-address-input"
+                  bind:value={locAddress}
+                  rows="2"
+                  placeholder="e.g. Plot 14, Industrial Estate, Salem"
+                  class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none focus:border-brand-orange resize-none"
+                ></textarea>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="loc-city-input" class="block text-[11px] font-bold text-app-muted uppercase mb-1">City</label>
+                  <input
+                    id="loc-city-input"
+                    type="text"
+                    bind:value={locCity}
+                    placeholder="Salem"
+                    class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none focus:border-brand-orange"
+                  />
+                </div>
+                <div>
+                  <label for="loc-state-input" class="block text-[11px] font-bold text-app-muted uppercase mb-1">State</label>
+                  <input
+                    id="loc-state-input"
+                    type="text"
+                    bind:value={locState}
+                    placeholder="Tamil Nadu"
+                    class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none focus:border-brand-orange"
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="loc-postal-input" class="block text-[11px] font-bold text-app-muted uppercase mb-1">Postal Code</label>
+                  <input
+                    id="loc-postal-input"
+                    type="text"
+                    bind:value={locPostalCode}
+                    placeholder="636004"
+                    class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none focus:border-brand-orange"
+                  />
+                </div>
+                <div>
+                  <label for="loc-radius-select" class="block text-[11px] font-bold text-app-muted uppercase mb-1">Delivery Radius</label>
+                  <select
+                    id="loc-radius-select"
+                    bind:value={locRadius}
+                    class="w-full px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none focus:border-brand-orange font-semibold text-brand-orange"
+                  >
+                    <option value={10}>10 km</option>
+                    <option value={25}>25 km</option>
+                    <option value={50}>50 km</option>
+                    <option value={100}>100 km</option>
+                    <option value={200}>200 km</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1">
+                <div class="p-2.5 bg-app-cardSubtle border border-app-border rounded-xl">
+                  <span class="text-[10px] font-bold text-app-muted uppercase block">Latitude</span>
+                  <span class="text-xs font-mono font-semibold text-app-text">{locLat.toFixed(6)}</span>
+                </div>
+                <div class="p-2.5 bg-app-cardSubtle border border-app-border rounded-xl">
+                  <span class="text-[10px] font-bold text-app-muted uppercase block">Longitude</span>
+                  <span class="text-xs font-mono font-semibold text-app-text">{locLng.toFixed(6)}</span>
+                </div>
+              </div>
+
+              <div class="pt-2">
+                <button
+                  type="button"
+                  onclick={handleSaveLocation}
+                  disabled={locSaving}
+                  class="w-full py-2.5 px-4 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {#if locSaving}
+                    <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Saving to Database...</span>
+                  {:else}
+                    <span>💾</span>
+                    <span>Save Business Location</span>
+                  {/if}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     {/if}
 
   </div>
@@ -1353,4 +1862,10 @@
 {/if}
 
 <!-- Delivery Tracking Modal -->
-<DeliveryTrackingModal bind:show={showTrackingModal} order={selectedTrackingOrder} />
+{#if showTrackingModal}
+  <DeliveryTrackingModal 
+    bind:show={showTrackingModal} 
+    order={selectedTrackingOrder} 
+    onClose={() => showTrackingModal = false} 
+  />
+{/if}
