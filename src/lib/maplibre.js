@@ -10,14 +10,57 @@ export async function getMapLibre() {
     throw new Error('MapLibre GL can only be loaded in the browser environment.');
   }
 
-  const mod = await import('maplibre-gl');
-  if (mod && typeof mod.Map === 'function') {
-    return mod;
+  // 1. Check if maplibregl is already on window
+  if (typeof window !== 'undefined' && window.maplibregl && typeof window.maplibregl.Map === 'function') {
+    return window.maplibregl;
   }
-  if (mod && mod.default && typeof mod.default.Map === 'function') {
-    return mod.default;
+
+  // 2. Dynamic import with comprehensive unwrap logic
+  try {
+    const mod = await import('maplibre-gl');
+    if (mod) {
+      if (typeof mod.Map === 'function') {
+        window.maplibregl = mod;
+        return mod;
+      }
+      if (mod.default && typeof mod.default.Map === 'function') {
+        window.maplibregl = mod.default;
+        return mod.default;
+      }
+      if (mod.default && mod.default.default && typeof mod.default.default.Map === 'function') {
+        window.maplibregl = mod.default.default;
+        return mod.default.default;
+      }
+    }
+  } catch (err) {
+    console.warn('Dynamic import of maplibre-gl failed:', err);
   }
-  return mod;
+
+  // 3. Fallback: load MapLibre GL from CDN if bundler bundle failed
+  if (typeof window !== 'undefined') {
+    if (!window.maplibregl || typeof window.maplibregl.Map !== 'function') {
+      await new Promise((resolve, reject) => {
+        const existing = document.getElementById('maplibre-cdn-script');
+        if (existing) {
+          existing.addEventListener('load', () => resolve(window.maplibregl));
+          existing.addEventListener('error', () => reject(new Error('Failed to load MapLibre GL from CDN')));
+          return;
+        }
+        const script = document.createElement('script');
+        script.id = 'maplibre-cdn-script';
+        script.src = 'https://unpkg.com/maplibre-gl@5.1.0/dist/maplibre-gl.js';
+        script.onload = () => resolve(window.maplibregl);
+        script.onerror = () => reject(new Error('Failed to load MapLibre GL from CDN'));
+        document.head.appendChild(script);
+      });
+    }
+
+    if (window.maplibregl && typeof window.maplibregl.Map === 'function') {
+      return window.maplibregl;
+    }
+  }
+
+  throw new Error('MapLibre GL library could not be loaded.');
 }
 
 /**

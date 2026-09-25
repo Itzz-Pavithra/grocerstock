@@ -79,17 +79,19 @@
     orders.filter(o => o.status === 'shipped').length
   );
 
-  let monthlyRevenue = $derived(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    return orders
-      .filter(o => {
-        const d = new Date(o.createdAt);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear && o.status !== 'cancelled';
-      })
-      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-  });
+  let monthlyRevenue = $derived(
+    (() => {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      return orders
+        .filter(o => {
+          const d = new Date(o.createdAt);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear && o.status !== 'cancelled';
+        })
+        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    })()
+  );
 
   // Low stock inventory warnings
   let lowStockInventory = $derived(
@@ -233,8 +235,8 @@
       const card = res.scorecard || res.performance;
       myPerformance = card?.metrics ? { ...card, ...card.metrics } : (card || null);
     } catch (err) {
-      console.error('Failed to load performance scorecard:', err);
-      toasts.error('Failed to load performance metrics');
+      console.warn('Failed to load performance scorecard:', err?.message || err);
+      myPerformance = null;
     } finally {
       performanceLoading = false;
     }
@@ -678,6 +680,16 @@
       locSaving = false;
     }
   }
+
+  $effect(() => {
+    if (activeTab === 'location' && browser && locMapContainer) {
+      if (!locMapInstance) {
+        initLocationMap();
+      } else {
+        setTimeout(() => locMapInstance?.resize(), 100);
+      }
+    }
+  });
 
   onMount(() => {
     if (!auth.token) {

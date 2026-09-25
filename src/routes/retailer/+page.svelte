@@ -92,17 +92,19 @@
     orders.filter(o => ['shipped', 'out_for_delivery', 'processing', 'packed'].includes(o.status)).length
   );
 
-  let monthlyProcurementSpend = $derived(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    return orders
-      .filter(o => {
-        const d = new Date(o.createdAt);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear && o.status !== 'cancelled';
-      })
-      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-  });
+  let monthlyProcurementSpend = $derived(
+    (() => {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      return orders
+        .filter(o => {
+          const d = new Date(o.createdAt);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear && o.status !== 'cancelled';
+        })
+        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    })()
+  );
 
   // Low stock products warning
   let lowStockProducts = $derived(

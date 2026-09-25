@@ -22,9 +22,43 @@
     onClose = null 
   } = $props();
 
-  let tracking = $state(null);
+  function buildDefaultTracking(ord) {
+    if (!ord || typeof ord !== 'object') return null;
+    const history = Array.isArray(ord.statusHistory) ? ord.statusHistory : [];
+    const timelineSteps = [
+      { key: 'accepted', label: 'Order Accepted', timestamp: ord.createdAt },
+      { key: 'processing', label: 'Processing', timestamp: history.find(h => h.status === 'processing')?.updatedAt || null },
+      { key: 'packed', label: 'Packed', timestamp: ord.packedAt || history.find(h => h.status === 'packed')?.updatedAt || null },
+      { key: 'shipped', label: 'Shipped', timestamp: ord.shippedAt || history.find(h => h.status === 'shipped')?.updatedAt || null },
+      { key: 'out_for_delivery', label: 'Out for Delivery', timestamp: ord.outForDeliveryAt || history.find(h => h.status === 'out_for_delivery')?.updatedAt || null },
+      { key: 'delivered', label: 'Delivered', timestamp: ord.deliveredAt || ord.actualDeliveryDate || history.find(h => h.status === 'delivered')?.updatedAt || null },
+    ];
+    return {
+      orderId: ord._id || ord.id,
+      status: ord.status || 'accepted',
+      productName: ord.productName || 'Order Items',
+      quantity: ord.quantity || 1,
+      unit: ord.unit || 'unit',
+      unitPrice: ord.unitPrice || 0,
+      totalAmount: ord.totalAmount || 0,
+      expectedDeliveryDate: ord.expectedDeliveryDate,
+      actualDeliveryDate: ord.actualDeliveryDate,
+      deliveryNotes: ord.deliveryNotes,
+      retailerStore: ord.retailerProfile?.storeName || 'Retailer',
+      retailerAddress: ord.retailerProfile?.address || '',
+      wholesalerCompany: ord.wholesalerProfile?.companyName || 'Wholesaler',
+      wholesalerPhone: ord.wholesalerProfile?.phone || '',
+      timelineSteps,
+      statusHistory: history,
+    };
+  }
+
+  let liveTracking = $state(null);
   let loading = $state(false);
   let error = $state('');
+
+  const fallbackTracking = $derived(buildDefaultTracking(order));
+  const tracking = $derived(liveTracking || fallbackTracking);
 
   const activeOrderId = $derived(
     orderId || order?._id || order?.id || (typeof order === 'string' ? order : null)
@@ -49,17 +83,21 @@
 
   async function fetchTracking() {
     if (!activeOrderId) {
-      loading = false;
-      error = 'Tracking information is not available yet for this order.';
+      if (!tracking) {
+        loading = false;
+        error = 'Tracking information is not available yet for this order.';
+      }
       return;
     }
 
-    loading = true;
+    if (!tracking) {
+      loading = true;
+    }
     error = '';
 
-    // Guard with a 10-second timeout so modal never hangs indefinitely
+    // Guard with an 8-second timeout so modal never hangs indefinitely
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Request timed out while loading delivery details. Please try again.')), 10000)
+      setTimeout(() => reject(new Error('Request timed out while loading live delivery details.')), 8000)
     );
 
     try {
@@ -67,13 +105,16 @@
       const res = await Promise.race([fetchPromise, timeoutPromise]);
       
       if (res && res.tracking) {
-        tracking = res.tracking;
-      } else {
+        liveTracking = res.tracking;
+        error = '';
+      } else if (!tracking) {
         error = 'Tracking information is not available yet.';
       }
     } catch (err) {
-      console.error('Failed to load tracking info:', err);
-      error = err.message || 'Unable to load real-time delivery details.';
+      console.warn('Live tracking fetch warning:', err.message);
+      if (!tracking) {
+        error = err.message || 'Unable to load real-time delivery details.';
+      }
     } finally {
       loading = false;
     }
@@ -82,15 +123,9 @@
   $effect(() => {
     if (show && activeOrderId) {
       fetchTracking();
-    } else if (show && !activeOrderId) {
+    } else if (show && !activeOrderId && !tracking) {
       loading = false;
       error = 'Tracking information is not available yet.';
-    }
-  });
-
-  onMount(() => {
-    if (show && activeOrderId) {
-      fetchTracking();
     }
   });
 </script>

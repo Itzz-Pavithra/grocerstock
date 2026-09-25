@@ -50,7 +50,9 @@ app.use(
   })
 );
 
-app.use(express.json());
+// Body parsers
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Route Mounts
 app.use('/api/auth', authRoutes);
@@ -78,9 +80,16 @@ app.get('/', (req, res) => {
   res.send('GrocerStock — Local Stock Grocery Management System API is running...');
 });
 
-// Centralized Error Handling Middleware
+// 404 handler for unknown API routes (prevents Express returning HTML for JSON APIs)
+app.use('/api', (req, res) => {
+  res.status(404).json({ success: false, message: `API endpoint not found: ${req.method} ${req.originalUrl}` });
+});
+
+// Centralized Error Handling Middleware (4 params required for Express error middleware)
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = err.status || err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
+  console.error(`[Error] ${req.method} ${req.originalUrl}:`, err.message);
   res.status(statusCode).json({
     success: false,
     message: err.message || 'Internal Server Error',

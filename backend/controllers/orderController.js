@@ -146,16 +146,20 @@ export const getOrderTracking = async (req, res) => {
     }
 
     // Role check: Only order retailer, wholesaler, or admin can track
-    const isRetailer = order.retailer.toString() === req.user._id.toString();
-    const isWholesaler = order.wholesaler.toString() === req.user._id.toString();
+    const retailerId = order.retailer?._id ? order.retailer._id.toString() : order.retailer?.toString();
+    const wholesalerId = order.wholesaler?._id ? order.wholesaler._id.toString() : order.wholesaler?.toString();
+    const currentUserId = req.user._id.toString();
+
+    const isRetailer = retailerId === currentUserId;
+    const isWholesaler = wholesalerId === currentUserId;
     const isAdmin = req.user.role === 'admin';
 
     if (!isRetailer && !isWholesaler && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Access denied to this order tracking' });
     }
 
-    const retailerProfile = await Retailer.findOne({ user: order.retailer });
-    const wholesalerProfile = await Wholesaler.findOne({ user: order.wholesaler });
+    const retailerProfile = await Retailer.findOne({ user: retailerId || order.retailer });
+    const wholesalerProfile = await Wholesaler.findOne({ user: wholesalerId || order.wholesaler });
 
     const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
 

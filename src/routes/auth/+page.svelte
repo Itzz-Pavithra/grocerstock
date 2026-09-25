@@ -94,26 +94,23 @@
     [min8, hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
   );
 
-  let strengthText = $derived(() => {
-    if (regPassword.length === 0) return '';
-    if (pwScore <= 2) return i18n.t('strengthWeak');
-    if (pwScore === 3) return i18n.t('strengthMedium');
-    if (pwScore === 4) return i18n.t('strengthStrong');
-    if (pwScore === 5) return i18n.t('strengthStrong');
-    return '';
-  });
+  let strengthText = $derived(
+    (() => {
+      if (regPassword.length === 0) return '';
+      if (pwScore <= 2) return i18n.t('strengthWeak');
+      if (pwScore === 3) return i18n.t('strengthMedium');
+      if (pwScore >= 4) return i18n.t('strengthStrong');
+      return '';
+    })()
+  );
 
-  let strengthColor = $derived(() => {
-    if (pwScore <= 2) return 'text-rose-500';
-    if (pwScore === 3) return 'text-amber-500';
-    return 'text-brand-orange';
-  });
+  let strengthColor = $derived(
+    pwScore <= 2 ? 'text-rose-500' : pwScore === 3 ? 'text-amber-500' : 'text-brand-orange'
+  );
 
-  let strengthBg = $derived(() => {
-    if (pwScore <= 2) return 'bg-rose-500';
-    if (pwScore === 3) return 'bg-amber-500';
-    return 'bg-brand-orange';
-  });
+  let strengthBg = $derived(
+    pwScore <= 2 ? 'bg-rose-500' : pwScore === 3 ? 'bg-amber-500' : 'bg-brand-orange'
+  );
 
   let strengthPct = $derived(
     regPassword.length === 0 ? 0 : pwScore * 20

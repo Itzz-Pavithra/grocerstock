@@ -170,3 +170,30 @@ export const getRequestById = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const deleteRequest = async (req, res) => {
+  try {
+    const stockRequest = await StockRequest.findById(req.params.id);
+    if (!stockRequest) {
+      return res.status(404).json({ success: false, message: 'Stock request not found' });
+    }
+
+    // Only the retailer who created it can cancel
+    if (stockRequest.retailer.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to cancel this request' });
+    }
+
+    // Can only cancel pending or responded requests (not accepted/fulfilled)
+    if (!['pending', 'responded'].includes(stockRequest.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel a request with status "${stockRequest.status}". Only pending or responded requests can be cancelled.`,
+      });
+    }
+
+    await StockRequest.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Stock request cancelled successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

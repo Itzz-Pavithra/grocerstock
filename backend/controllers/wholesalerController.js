@@ -29,9 +29,42 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
  * Calculates real performance analytics for a wholesaler from database records
  */
 async function computeWholesalerScorecard(userId) {
-  const wholesalerProfile = await Wholesaler.findOne({ user: userId });
+  let wholesalerProfile = await Wholesaler.findOne({ user: userId });
   if (!wholesalerProfile) {
-    return null;
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'wholesaler') {
+      return null;
+    }
+    // Return empty scorecard structure for newly registered wholesaler
+    return {
+      wholesalerId: userId,
+      companyName: user.name || 'Wholesale Supplier',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      categoriesSupplied: [],
+      deliveryRadiusKm: 25,
+      hasData: false,
+      metrics: {
+        totalOrders: 0,
+        completedOrders: 0,
+        cancelledOrders: 0,
+        totalOrderValue: 0,
+        fulfillmentRate: 'N/A',
+        fulfillmentRateNumber: null,
+        onTimeDeliveryRate: 'N/A',
+        onTimeDeliveryRateNumber: null,
+        onTimeDeliveries: 0,
+        lateDeliveries: 0,
+        averageDeliveryDays: 'N/A',
+        averageDeliveryDaysNumber: null,
+        avgQuotationTurnaroundHours: 'N/A',
+        quotationResponseTimeHours: null,
+        totalQuotationsSubmitted: 0,
+      },
+      message: 'Insufficient historical order records to evaluate supplier performance',
+    };
   }
 
   // Fetch all orders for this wholesaler
@@ -108,11 +141,11 @@ async function computeWholesalerScorecard(userId) {
 
   return {
     wholesalerId: userId,
-    companyName: wholesalerProfile.companyName,
-    phone: wholesalerProfile.phone,
-    address: wholesalerProfile.address,
-    city: wholesalerProfile.city,
-    state: wholesalerProfile.state,
+    companyName: wholesalerProfile.companyName || 'Wholesaler',
+    phone: wholesalerProfile.phone || '',
+    address: wholesalerProfile.address || '',
+    city: wholesalerProfile.city || '',
+    state: wholesalerProfile.state || '',
     categoriesSupplied: wholesalerProfile.categoriesSupplied || [],
     deliveryRadiusKm: wholesalerProfile.deliveryRadiusKm || 25,
     hasData,
@@ -154,7 +187,39 @@ export const getMyPerformance = async (req, res) => {
   try {
     const scorecard = await computeWholesalerScorecard(req.user._id);
     if (!scorecard) {
-      return res.status(404).json({ success: false, message: 'Wholesaler profile not found' });
+      return res.json({
+        success: true,
+        scorecard: {
+          wholesalerId: req.user._id,
+          companyName: req.user.name || 'Wholesale Supplier',
+          phone: '',
+          address: '',
+          city: '',
+          state: '',
+          categoriesSupplied: [],
+          deliveryRadiusKm: 25,
+          hasData: false,
+          metrics: {
+            totalOrders: 0,
+            completedOrders: 0,
+            cancelledOrders: 0,
+            totalOrderValue: 0,
+            fulfillmentRate: 'N/A',
+            fulfillmentRateNumber: null,
+            onTimeDeliveryRate: 'N/A',
+            onTimeDeliveryRateNumber: null,
+            onTimeDeliveries: 0,
+            lateDeliveries: 0,
+            averageDeliveryDays: 'N/A',
+            averageDeliveryDaysNumber: null,
+            avgQuotationTurnaroundHours: 'N/A',
+            quotationResponseTimeHours: null,
+            totalQuotationsSubmitted: 0,
+          },
+          message: 'Insufficient historical order records to evaluate supplier performance',
+        },
+        performance: null,
+      });
     }
     res.json({ success: true, scorecard, performance: scorecard });
   } catch (error) {
