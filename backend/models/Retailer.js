@@ -63,5 +63,5 @@ const retailerSchema = new mongoose.Schema(
   }
 );
 
-const Retailer = mongoose.model('Retailer', retailerSchema);
+const Retailer = mongoose.models.Retailer || mongoose.model('Retailer', retailerSchema);
 export default Retailer;

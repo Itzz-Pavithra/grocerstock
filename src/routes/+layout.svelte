@@ -25,7 +25,9 @@
 <svelte:window onscroll={handleScroll} />
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="icon" type="image/png" href="/favicon.png" />
+	<link rel="shortcut icon" href="/favicon.ico" />
 	<title>{i18n.t('brandName')} - Local Grocery Stock Request System</title>
 	<script>
 		(function() {

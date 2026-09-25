@@ -79,15 +79,14 @@ const stockRequestSchema = new mongoose.Schema(
   }
 );
 
-stockRequestSchema.pre('save', function (next) {
+stockRequestSchema.pre('save', function () {
   if (this.requestedQuantity === undefined || this.requestedQuantity === null) {
     this.requestedQuantity = this.quantity;
   }
   if (this.remainingQuantity === undefined || this.remainingQuantity === null) {
     this.remainingQuantity = Math.max(0, this.requestedQuantity - (this.fulfilledQuantity || 0));
   }
-  next();
 });
 
-const StockRequest = mongoose.model('StockRequest', stockRequestSchema);
+const StockRequest = mongoose.models.StockRequest || mongoose.model('StockRequest', stockRequestSchema);
 export default StockRequest;

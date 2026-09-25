@@ -116,6 +116,6 @@ orderSchema.methods.canTransitionTo = function (nextStatus) {
   return allowed.includes(nextStatus);
 };
 
-const Order = mongoose.model('Order', orderSchema);
+const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 export default Order;
 

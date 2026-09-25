@@ -76,5 +76,5 @@ const wholesalerSchema = new mongoose.Schema(
   }
 );
 
-const Wholesaler = mongoose.model('Wholesaler', wholesalerSchema);
+const Wholesaler = mongoose.models.Wholesaler || mongoose.model('Wholesaler', wholesalerSchema);
 export default Wholesaler;

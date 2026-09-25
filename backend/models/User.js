@@ -50,17 +50,22 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   if (!this.isModified('password')) {
-    return next();
+    return;
   }
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
+  // Prevent double-hashing if password is already a valid bcrypt hash
+  if (
+    typeof this.password === 'string' &&
+    (this.password.startsWith('$2a$') ||
+      this.password.startsWith('$2b$') ||
+      this.password.startsWith('$2y$')) &&
+    this.password.length === 60
+  ) {
+    return;
   }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 userSchema.methods.comparePassword = async function (enteredPassword) {
@@ -106,5 +111,5 @@ userSchema.methods.verifyOTP = function (enteredOTP) {
   }
 };
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 export default User;

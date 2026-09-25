@@ -2,21 +2,33 @@ import nodemailer from 'nodemailer';
 
 let transporter = null;
 
-const initTransporter = () => {
+export const initTransporter = () => {
   if (transporter) return transporter;
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('Email service is not configured.');
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER || process.env.SMTP_EMAIL;
+  const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
+  const port = Number(process.env.SMTP_PORT) || 465;
+
+  if (!host || !user || !pass) {
+    throw new Error('Email service is not configured (missing SMTP_HOST, SMTP_USER, or SMTP_PASS/SMTP_PASSWORD).');
   }
 
+  const isSecure = process.env.SMTP_SECURE !== undefined
+    ? process.env.SMTP_SECURE === 'true'
+    : port === 465;
+
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: Number(process.env.SMTP_PORT) === 465,
+    host,
+    port,
+    secure: isSecure,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user,
+      pass,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
   return transporter;
@@ -24,7 +36,8 @@ const initTransporter = () => {
 
 export const sendOtpEmail = async (email, otp) => {
   const mailer = initTransporter();
-  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const user = process.env.SMTP_USER || process.env.SMTP_EMAIL;
+  const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || user;
   const expiry = process.env.OTP_EXPIRY_MINUTES || 10;
 
   const htmlContent = `

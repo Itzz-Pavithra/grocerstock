@@ -62,5 +62,5 @@ const responseSchema = new mongoose.Schema(
   }
 );
 
-const Response = mongoose.model('Response', responseSchema);
+const Response = mongoose.models.Response || mongoose.model('Response', responseSchema);
 export default Response;

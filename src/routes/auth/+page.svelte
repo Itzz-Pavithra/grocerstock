@@ -160,6 +160,7 @@
 
   async function handleRegister(e) {
     e.preventDefault();
+    if (regLoading) return;
     regError = '';
     regLoading = true;
 
@@ -234,7 +235,16 @@
       startResendTimer();
       toasts.success('Registration successful! Enter the verification code sent to your email.');
     } catch (err) {
-      regError = err.message || 'Registration failed';
+      const rawMsg = err.message || '';
+      if (rawMsg.includes('already exists') || rawMsg.includes('409')) {
+        regError = 'An account with this email already exists.';
+      } else if (rawMsg.includes('verification email') || rawMsg.includes('503') || rawMsg.includes('SMTP')) {
+        regError = "We couldn't send the OTP. Please check your email configuration and try again.";
+      } else if (rawMsg.includes('next is not a function')) {
+        regError = 'Unable to create your account. Please try again.';
+      } else {
+        regError = rawMsg || 'Unable to create your account. Please try again.';
+      }
       toasts.error(regError);
     } finally {
       regLoading = false;
@@ -266,6 +276,7 @@
 
   async function handleVerifyOtp(e) {
     if (e) e.preventDefault();
+    if (otpLoading) return;
     otpError = '';
     otpSuccess = '';
     otpLoading = true;
@@ -294,7 +305,7 @@
         else goto('/');
       }, 600);
     } catch (err) {
-      otpError = err.message || 'Invalid or expired OTP code';
+      otpError = err.message || 'Invalid or expired verification code. Please try again.';
       toasts.error(otpError);
     } finally {
       otpLoading = false;
@@ -445,7 +456,7 @@
             <button 
               type="submit" 
               disabled={otpLoading}
-              class="w-full py-3 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl transition-all shadow-md hover-lift flex justify-center items-center"
+              class="w-full py-3 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl transition-all shadow-md hover-lift flex justify-center items-center disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {otpLoading ? 'Verifying Code...' : 'Verify & Continue'}
             </button>
@@ -790,7 +801,7 @@
                 <button 
                   type="submit" 
                   disabled={regLoading}
-                  class="w-full py-3 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl transition-all shadow-md hover-lift flex justify-center items-center"
+                  class="w-full py-3 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl transition-all shadow-md hover-lift flex justify-center items-center disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {regLoading ? i18n.t('creatingAccountText') : i18n.t('createAccountAction')}
                 </button>
