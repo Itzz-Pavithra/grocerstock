@@ -278,14 +278,19 @@
         if (res.profile.city) locCity = res.profile.city;
         if (res.profile.state) locState = res.profile.state;
         if (res.profile.postalCode) locPostalCode = res.profile.postalCode;
-        if (res.profile.latitude !== undefined && res.profile.latitude !== null) {
+        if (res.profile.latitude !== undefined && res.profile.latitude !== null && res.profile.latitude !== '') {
           locLat = Number(res.profile.latitude);
         }
-        if (res.profile.longitude !== undefined && res.profile.longitude !== null) {
+        if (res.profile.longitude !== undefined && res.profile.longitude !== null && res.profile.longitude !== '') {
           locLng = Number(res.profile.longitude);
         }
         if (res.profile.deliveryRadiusKm !== undefined) {
           locRadius = Number(res.profile.deliveryRadiusKm);
+        }
+
+        if (locMapInstance && browser) {
+          locMapInstance.setCenter([locLng, locLat]);
+          renderLocMarker();
         }
       }
     } catch (err) {
@@ -294,10 +299,11 @@
   }
 
   async function initLocationMap() {
-    await new Promise(r => setTimeout(r, 120));
+    await new Promise(r => setTimeout(r, 100));
     if (!browser || !locMapContainer) return;
 
     if (locMapInstance) {
+      locMapLoading = false;
       setTimeout(() => locMapInstance?.resize(), 50);
       return;
     }
@@ -314,17 +320,27 @@
         container: locMapContainer,
         style: mapStyle,
         center: [locLng, locLat],
-        zoom: 13,
+        zoom: 14,
         attributionControl: false,
       });
 
       locMapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
 
-      locMapInstance.on('load', () => {
+      let isReady = false;
+      const markLoaded = () => {
+        if (isReady) return;
+        isReady = true;
         locMapLoading = false;
+        locMapError = null;
         renderLocMarker(maplibregl);
-        setTimeout(() => locMapInstance?.resize(), 100);
-      });
+        setTimeout(() => locMapInstance?.resize(), 50);
+      };
+
+      locMapInstance.once('load', markLoaded);
+      locMapInstance.once('style.load', markLoaded);
+      locMapInstance.once('idle', markLoaded);
+      // Fallback timer so map never hangs on loading
+      setTimeout(markLoaded, 600);
 
       locMapInstance.on('error', (e) => {
         console.warn('MapLibre runtime error:', e);

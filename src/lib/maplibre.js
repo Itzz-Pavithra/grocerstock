@@ -64,30 +64,32 @@ export async function getMapLibre() {
 }
 
 /**
- * Production-ready OpenStreetMap raster tiles style specification.
- * Works 100% reliably in any environment without requiring external API keys.
+ * Production-ready Carto Voyager / OpenStreetMap raster tiles style specification.
+ * Works 100% reliably in any browser environment over global CDN without requiring external API keys.
  */
 export const osmRasterStyle = {
   version: 8,
   sources: {
-    'osm-tiles': {
+    'carto-voyager': {
       type: 'raster',
       tiles: [
-        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
     },
   },
   layers: [
     {
-      id: 'osm-tiles',
+      id: 'carto-voyager-tiles',
       type: 'raster',
-      source: 'osm-tiles',
+      source: 'carto-voyager',
       minzoom: 0,
-      maxzoom: 19,
+      maxzoom: 20,
     },
   ],
 };

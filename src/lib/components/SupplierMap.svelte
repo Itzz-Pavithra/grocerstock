@@ -134,8 +134,14 @@
     if (!val || val.trim().length < 2) {
       placeSearchResults = [];
       showPlaceDropdown = false;
+      searchQuery = '';
+      loadWholesalers();
       return;
     }
+
+    // Simultaneously filter wholesalers by city, locality or address
+    searchQuery = val.trim();
+    loadWholesalers();
 
     searchDebounceTimer = setTimeout(async () => {
       isSearchingPlaces = true;
@@ -244,6 +250,15 @@
       return;
     }
 
+    if (mapInstance) {
+      mapLoading = false;
+      mapInstance.resize();
+      return;
+    }
+
+    mapLoading = true;
+    mapError = null;
+
     try {
       const maplibregl = await getMapLibre();
 
@@ -255,13 +270,16 @@
         container: mapContainer,
         style: mapStyle,
         center: [currentLng, currentLat],
-        zoom: 11,
+        zoom: 12,
         attributionControl: false,
       });
 
       mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
 
-      mapInstance.on('load', () => {
+      let isReady = false;
+      const markLoaded = () => {
+        if (isReady) return;
+        isReady = true;
         mapLoading = false;
         mapError = null;
         if (mapInstance) {
@@ -269,11 +287,15 @@
         }
         renderUserMarker();
         updateMapMarkers();
-      });
+      };
+
+      mapInstance.once('load', markLoaded);
+      mapInstance.once('style.load', markLoaded);
+      mapInstance.once('idle', markLoaded);
+      setTimeout(markLoaded, 600);
 
       mapInstance.on('error', (e) => {
         console.warn('MapLibre error:', e);
-        // If MapTiler failed, fallback to OSM
         if (hasMapTilerKey && mapInstance && mapInstance.setStyle) {
           try {
             mapInstance.setStyle(osmRasterStyle);
@@ -605,8 +627,9 @@
             type="text"
             value={placeSearchQuery}
             oninput={handlePlaceSearchInput}
+            onkeydown={(e) => { if (e.key === 'Enter') { searchQuery = placeSearchQuery; loadWholesalers(); } }}
             onfocus={() => { if (placeSearchResults.length > 0) showPlaceDropdown = true; }}
-            placeholder="Search city, town or locality (e.g. Salem, Chennai)..."
+            placeholder="Search city, town, locality or supplier address..."
             class="w-full pl-8 pr-8 py-2 text-xs bg-app-cardSubtle border border-app-border rounded-lg text-app-text focus:outline-none focus:border-brand-orange"
           />
           {#if isSearchingPlaces}
@@ -614,7 +637,7 @@
           {:else if placeSearchQuery}
             <button
               type="button"
-              onclick={() => { placeSearchQuery = ''; placeSearchResults = []; showPlaceDropdown = false; }}
+              onclick={() => { placeSearchQuery = ''; placeSearchResults = []; showPlaceDropdown = false; searchQuery = ''; loadWholesalers(); }}
               class="absolute right-2.5 top-1/2 -translate-y-1/2 text-app-textMuted hover:text-app-text"
             >
               <X class="h-3.5 w-3.5" />
@@ -648,7 +671,7 @@
           type="text"
           bind:value={searchQuery}
           oninput={() => loadWholesalers()}
-          placeholder="Filter supplier name..."
+          placeholder="Filter supplier, product (e.g. Rice)..."
           class="w-full px-3 py-2 text-xs bg-app-cardSubtle border border-app-border rounded-lg text-app-text focus:outline-none focus:border-brand-orange"
         />
       </div>

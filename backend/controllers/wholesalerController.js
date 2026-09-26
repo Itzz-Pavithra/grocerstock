@@ -264,13 +264,24 @@ export const getNearbyWholesalers = async (req, res) => {
         if (!w) continue;
       }
 
-      // Coordinate resolution: check both w.latitude/w.longitude and w.location.coordinates
-      let lat = typeof w.latitude === 'number' && !isNaN(w.latitude) ? w.latitude : null;
-      let lng = typeof w.longitude === 'number' && !isNaN(w.longitude) ? w.longitude : null;
+      // Coordinate resolution: check w.latitude/w.longitude (Number or String) and w.location.coordinates
+      let lat = null;
+      let lng = null;
+
+      if (w.latitude !== undefined && w.latitude !== null && w.latitude !== '') {
+        const parsed = Number(w.latitude);
+        if (!isNaN(parsed)) lat = parsed;
+      }
+      if (w.longitude !== undefined && w.longitude !== null && w.longitude !== '') {
+        const parsed = Number(w.longitude);
+        if (!isNaN(parsed)) lng = parsed;
+      }
 
       if ((lat === null || lng === null) && w.location && Array.isArray(w.location.coordinates) && w.location.coordinates.length === 2) {
-        lng = typeof w.location.coordinates[0] === 'number' ? w.location.coordinates[0] : parseFloat(w.location.coordinates[0]);
-        lat = typeof w.location.coordinates[1] === 'number' ? w.location.coordinates[1] : parseFloat(w.location.coordinates[1]);
+        const parsedLng = Number(w.location.coordinates[0]);
+        const parsedLat = Number(w.location.coordinates[1]);
+        if (!isNaN(parsedLat)) lat = parsedLat;
+        if (!isNaN(parsedLng)) lng = parsedLng;
       }
 
       // Valid coordinates check: lat between -90 and 90, lng between -180 and 180
@@ -286,40 +297,6 @@ export const getNearbyWholesalers = async (req, res) => {
         ? calculateHaversineDistance(userLat, userLng, lat, lng)
         : null;
 
-      // Filter by radius if user provided coordinates and radius is specified
-      if (distanceKm !== null && maxRadius !== null && !isNaN(maxRadius) && distanceKm > maxRadius) {
-        continue;
-      }
-
-      // Filter by search query (company, address, city, state, postal code, categories)
-      if (search && search.trim()) {
-        const query = search.trim().toLowerCase();
-        const matchesName = (w.companyName || '').toLowerCase().includes(query);
-        const matchesAddress = (w.address || '').toLowerCase().includes(query);
-        const matchesCity = (w.city || '').toLowerCase().includes(query);
-        const matchesState = (w.state || '').toLowerCase().includes(query);
-        const matchesPostal = (w.postalCode || '').toLowerCase().includes(query);
-        const matchesCat = (w.categoriesSupplied || []).some((c) => (c || '').toLowerCase().includes(query));
-        if (!matchesName && !matchesAddress && !matchesCity && !matchesState && !matchesPostal && !matchesCat) {
-          continue;
-        }
-      }
-
-      // Filter by category
-      if (category && category !== 'All' && category.trim()) {
-        const matchesCategory = (w.categoriesSupplied || []).some(
-          (c) => c.toLowerCase() === category.toLowerCase()
-        );
-        if (!matchesCategory) {
-          continue;
-        }
-      }
-
-      // Quick performance metrics summary
-      const completedOrdersCount = await Order.countDocuments({ wholesaler: user._id, status: 'delivered' });
-      const totalOrdersCount = await Order.countDocuments({ wholesaler: user._id });
-      const fulfillmentRate = totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : null;
-
       // Real Inventory stock items for this wholesaler (independent stock)
       const stockRecords = await Inventory.find({
         wholesaler: user._id,
@@ -327,9 +304,48 @@ export const getNearbyWholesalers = async (req, res) => {
         stockQuantity: { $gt: 0 },
       }).sort({ productName: 1 });
 
+      const isSearching = Boolean(search && search.trim());
+
+      // Filter by search query (company, address, city, state, postal code, categories, and stock products)
+      if (isSearching) {
+        const query = search.trim().toLowerCase();
+        const matchesName = (w.companyName || '').toLowerCase().includes(query);
+        const matchesAddress = (w.address || '').toLowerCase().includes(query);
+        const matchesCity = (w.city || '').toLowerCase().includes(query);
+        const matchesState = (w.state || '').toLowerCase().includes(query);
+        const matchesPostal = (w.postalCode || '').toLowerCase().includes(query);
+        const matchesCat = (w.categoriesSupplied || []).some((c) => (c || '').toLowerCase().includes(query));
+        const matchesProduct = stockRecords.some((item) => (item.productName || '').toLowerCase().includes(query));
+        if (!matchesName && !matchesAddress && !matchesCity && !matchesState && !matchesPostal && !matchesCat && !matchesProduct) {
+          continue;
+        }
+      }
+
+      // Filter by category
+      if (category && category !== 'All' && category !== 'All Categories' && category.trim()) {
+        const matchesCategory =
+          (w.categoriesSupplied || []).some((c) => c.toLowerCase() === category.toLowerCase()) ||
+          stockRecords.some((item) => (item.category || '').toLowerCase() === category.toLowerCase());
+        if (!matchesCategory) {
+          continue;
+        }
+      }
+
+      // Filter by radius:
+      // If user is searching explicitly for a specific city/place/supplier/product, do NOT drop matching results
+      // Otherwise enforce the radius restriction
+      if (!isSearching && distanceKm !== null && maxRadius !== null && !isNaN(maxRadius) && distanceKm > maxRadius) {
+        continue;
+      }
+
       const deliveryRadius = w.deliveryRadiusKm || 25;
       const isDeliveryAvailable = distanceKm !== null ? distanceKm <= deliveryRadius : true;
       const deliveryStatus = isDeliveryAvailable ? 'Delivery Available' : 'Outside Delivery Area';
+
+      // Quick performance metrics summary
+      const completedOrdersCount = await Order.countDocuments({ wholesaler: user._id, status: 'delivered' });
+      const totalOrdersCount = await Order.countDocuments({ wholesaler: user._id });
+      const fulfillmentRate = totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : null;
 
       results.push({
         _id: w._id,
