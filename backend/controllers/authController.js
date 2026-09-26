@@ -631,7 +631,6 @@ export const updateProfile = async (req, res) => {
         }
         await profile.save();
       }
-    }
 
     res.json({
       success: true,
