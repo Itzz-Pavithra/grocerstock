@@ -173,12 +173,7 @@ const seedDB = async () => {
 
     console.log('✅ Users and business profiles seeded with locations.');
 
-    // Seed Common 100-Unit Inventory Catalogue for Wholesalers
-    await ensureWholesalerInventory(wholeUser1._id);
-    await ensureWholesalerInventory(wholeUser2._id);
-    console.log('✅ Common 100-stock inventory seeded for wholesalers.');
-
-    // Seed Wholesaler 2 Inventory
+    // Seed custom inventory items for Wholesaler 2 first
     await Inventory.insertMany([
       {
         wholesaler: wholeUser2._id,
@@ -221,7 +216,10 @@ const seedDB = async () => {
       },
     ]);
 
-    console.log('✅ Wholesaler inventories seeded.');
+    // Seed Common 100-Unit Inventory Catalogue for Wholesalers (preserves existing items)
+    await ensureWholesalerInventory(wholeUser1._id);
+    await ensureWholesalerInventory(wholeUser2._id);
+    console.log('✅ Common 100-stock inventory seeded for wholesalers.');
 
     // Seed Historical Requests & Past Delivered Orders for Metrics, Predictions & Price Comparison
     const pastRequest1 = await StockRequest.create({
