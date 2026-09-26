@@ -3,7 +3,12 @@
   import { browser } from '$app/environment';
   import { api } from '$lib/api.js';
   import { toasts } from '$lib/toasts.svelte.js';
-  import { getMapLibre, osmRasterStyle } from '$lib/maplibre.js';
+  import { 
+    getMapLibre, 
+    getEffectiveMapStyle, 
+    createMapTransformRequest, 
+    cleanOsmRasterStyle 
+  } from '$lib/maplibre.js';
   import { 
     MapPin, 
     Navigation, 
@@ -262,9 +267,8 @@
     try {
       const maplibregl = await getMapLibre();
 
-      const mapStyle = hasMapTilerKey
-        ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${mapTilerKey}`
-        : osmRasterStyle;
+      const mapStyle = getEffectiveMapStyle();
+      const transformRequest = createMapTransformRequest();
 
       mapInstance = new maplibregl.Map({
         container: mapContainer,
@@ -272,6 +276,7 @@
         center: [currentLng, currentLat],
         zoom: 12,
         attributionControl: false,
+        transformRequest,
       });
 
       mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
@@ -296,9 +301,9 @@
 
       mapInstance.on('error', (e) => {
         console.warn('MapLibre error:', e);
-        if (hasMapTilerKey && mapInstance && mapInstance.setStyle) {
+        if (mapInstance && mapInstance.setStyle) {
           try {
-            mapInstance.setStyle(osmRasterStyle);
+            mapInstance.setStyle(cleanOsmRasterStyle);
           } catch {
             mapError = 'Map tiles could not be loaded.';
           }

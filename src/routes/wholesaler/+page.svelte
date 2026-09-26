@@ -8,7 +8,12 @@
   import { toasts } from '$lib/toasts.svelte.js';
   import DeliveryTrackingModal from '$lib/components/DeliveryTrackingModal.svelte';
   import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
-  import { getMapLibre, osmRasterStyle } from '$lib/maplibre.js';
+  import { 
+    getMapLibre, 
+    getEffectiveMapStyle, 
+    createMapTransformRequest, 
+    cleanOsmRasterStyle 
+  } from '$lib/maplibre.js';
 
   // Active Tab: 'orders' | 'inventory' | 'predictions' | 'performance' | 'location'
   let activeTab = $state('orders');
@@ -312,9 +317,8 @@
     locMapError = null;
     try {
       const maplibregl = await getMapLibre();
-      const mapStyle = hasMapTilerKey
-        ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${mapTilerKey}`
-        : osmRasterStyle;
+      const mapStyle = getEffectiveMapStyle();
+      const transformRequest = createMapTransformRequest();
 
       locMapInstance = new maplibregl.Map({
         container: locMapContainer,
@@ -322,6 +326,7 @@
         center: [locLng, locLat],
         zoom: 14,
         attributionControl: false,
+        transformRequest,
       });
 
       locMapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
@@ -344,9 +349,9 @@
 
       locMapInstance.on('error', (e) => {
         console.warn('MapLibre runtime error:', e);
-        if (hasMapTilerKey && locMapInstance?.setStyle) {
+        if (locMapInstance?.setStyle) {
           try {
-            locMapInstance.setStyle(osmRasterStyle);
+            locMapInstance.setStyle(cleanOsmRasterStyle);
           } catch {
             // Keep current style
           }

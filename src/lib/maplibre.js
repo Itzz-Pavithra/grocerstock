@@ -64,32 +64,119 @@ export async function getMapLibre() {
 }
 
 /**
- * Production-ready Carto Voyager / OpenStreetMap raster tiles style specification.
- * Works 100% reliably in any browser environment over global CDN without requiring external API keys.
+ * Resolves the configured CARTO API key from Vite / SvelteKit public environment variables.
  */
-export const osmRasterStyle = {
+export function getCartoApiKey() {
+  const key = (import.meta.env.VITE_CARTO_API_KEY || import.meta.env.VITE_MAP_API_KEY || '').trim();
+  return key && key !== 'YOUR_CARTO_API_KEY' ? key : '';
+}
+
+/**
+ * Resolves the configured MapTiler API key from Vite / SvelteKit public environment variables.
+ */
+export function getMapTilerApiKey() {
+  const key = (import.meta.env.VITE_MAPTILER_API_KEY || '').trim();
+  return key && key !== 'YOUR_MAPTILER_API_KEY' ? key : '';
+}
+
+/**
+ * Clean OpenStreetMap standard raster tiles specification.
+ * 100% free, reliable, no API key required, and ZERO watermarks.
+ */
+export const cleanOsmRasterStyle = {
   version: 8,
   sources: {
-    'carto-voyager': {
+    'osm-standard': {
       type: 'raster',
       tiles: [
-        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     },
   },
   layers: [
     {
-      id: 'carto-voyager-tiles',
+      id: 'osm-standard-tiles',
       type: 'raster',
-      source: 'carto-voyager',
+      source: 'osm-standard',
       minzoom: 0,
-      maxzoom: 20,
+      maxzoom: 19,
     },
   ],
 };
+
+/**
+ * Creates authenticated CARTO Voyager raster tiles specification.
+ * If apiKey is provided, it is appended to all tile requests to eliminate watermarks.
+ */
+export function createCartoRasterStyle(apiKey) {
+  const keyParam = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : '';
+  return {
+    version: 8,
+    sources: {
+      'carto-voyager': {
+        type: 'raster',
+        tiles: [
+          `https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+          `https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+          `https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+          `https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+        ],
+        tileSize: 256,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+      },
+    },
+    layers: [
+      {
+        id: 'carto-voyager-tiles',
+        type: 'raster',
+        source: 'carto-voyager',
+        minzoom: 0,
+        maxzoom: 20,
+      },
+    ],
+  };
+}
+
+/**
+ * Resolves the effective MapLibre style:
+ * 1. If VITE_CARTO_API_KEY is configured, uses CARTO Voyager with the key.
+ * 2. If VITE_MAPTILER_API_KEY is configured, uses MapTiler Streets v2.
+ * 3. Fallback: Clean OpenStreetMap standard raster tiles (zero watermark, no key required).
+ */
+export function getEffectiveMapStyle() {
+  const cartoKey = getCartoApiKey();
+  const mapTilerKey = getMapTilerApiKey();
+
+  if (cartoKey) {
+    return createCartoRasterStyle(cartoKey);
+  }
+
+  if (mapTilerKey) {
+    return `https://api.maptiler.com/maps/streets-v2/style.json?key=${encodeURIComponent(mapTilerKey)}`;
+  }
+
+  return cleanOsmRasterStyle;
+}
+
+/**
+ * Creates MapLibre transformRequest function to inject CARTO API key into all sub-resource requests
+ */
+export function createMapTransformRequest() {
+  const cartoKey = getCartoApiKey();
+  return (url) => {
+    if (cartoKey && typeof url === 'string' && url.includes('cartocdn.com') && !url.includes('api_key=')) {
+      const sep = url.includes('?') ? '&' : '?';
+      return { url: `${url}${sep}api_key=${encodeURIComponent(cartoKey)}` };
+    }
+    return { url };
+  };
+}
+
+// Backward-compatible alias for existing imports
+export const osmRasterStyle = cleanOsmRasterStyle;
