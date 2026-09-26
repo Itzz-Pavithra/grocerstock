@@ -3,8 +3,9 @@ import { searchLocation, reverseGeocode, getDirections } from '../controllers/lo
 
 const router = express.Router();
 
+router.get('/', getDirections);
+router.get('/directions', getDirections);
 router.get('/search', searchLocation);
 router.get('/reverse', reverseGeocode);
-router.get('/directions', getDirections);
 
 export default router;

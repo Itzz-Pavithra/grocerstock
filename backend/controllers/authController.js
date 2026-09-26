@@ -6,6 +6,7 @@ import Retailer from '../models/Retailer.js';
 import Wholesaler from '../models/Wholesaler.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import { sendOtpEmail } from '../services/emailService.js';
+import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || 'supersecretkey_localgrocery_2026', {
@@ -306,6 +307,7 @@ export const verifyOtp = async (req, res) => {
           };
         }
         await Wholesaler.create(profilePayload);
+        await ensureWholesalerInventory(user._id);
       }
 
       // Clean up pending registration
@@ -593,8 +595,16 @@ export const updateProfile = async (req, res) => {
       }
     } else if (user.role === 'wholesaler') {
       profile = await Wholesaler.findOne({ user: user._id });
-      if (profile) {
-        if (companyName) profile.companyName = companyName.trim();
+      if (!profile) {
+        profile = new Wholesaler({
+          user: user._id,
+          companyName: companyName?.trim() || user.email.split('@')[0],
+          phone: phone?.trim() || 'N/A',
+          address: address?.trim() || 'Warehouse Address',
+          businessRegNo: 'REG-' + user._id.toString().slice(-6),
+        });
+      }
+      if (companyName) profile.companyName = companyName.trim();
         if (phone) profile.phone = phone.trim();
         if (address) profile.address = address.trim();
         if (city !== undefined) profile.city = city.trim();

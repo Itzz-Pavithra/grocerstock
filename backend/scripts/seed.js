@@ -13,6 +13,7 @@ import Response from '../models/Response.js';
 import Order from '../models/Order.js';
 import Inventory from '../models/Inventory.js';
 import Notification from '../models/Notification.js';
+import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -172,61 +173,10 @@ const seedDB = async () => {
 
     console.log('✅ Users and business profiles seeded with locations.');
 
-    // Seed Wholesaler 1 Inventory
-    await Inventory.insertMany([
-      {
-        wholesaler: wholeUser1._id,
-        productName: 'Sona Masoori Raw Rice',
-        category: 'Pantry Staples',
-        brand: 'Royal Harvest',
-        unit: 'kg',
-        stockQuantity: 65,
-        unitPrice: 52,
-        minStockThreshold: 20,
-        leadTimeDays: 3,
-        reorderQuantity: 150,
-        isAvailable: true,
-      },
-      {
-        wholesaler: wholeUser1._id,
-        productName: 'Aashirvaad Superior MP Atta',
-        category: 'Pantry Staples',
-        brand: 'Aashirvaad',
-        unit: 'kg',
-        stockQuantity: 120,
-        unitPrice: 46,
-        minStockThreshold: 30,
-        leadTimeDays: 2,
-        reorderQuantity: 100,
-        isAvailable: true,
-      },
-      {
-        wholesaler: wholeUser1._id,
-        productName: 'Fortune Sunlite Refined Sunflower Oil',
-        category: 'Pantry Staples',
-        brand: 'Fortune',
-        unit: 'liter',
-        stockQuantity: 18,
-        unitPrice: 135,
-        minStockThreshold: 25,
-        leadTimeDays: 3,
-        reorderQuantity: 80,
-        isAvailable: true,
-      },
-      {
-        wholesaler: wholeUser1._id,
-        productName: 'Fresh Farm Whole Milk',
-        category: 'Dairy & Eggs',
-        brand: 'Amul Taaza',
-        unit: 'liter',
-        stockQuantity: 40,
-        unitPrice: 56,
-        minStockThreshold: 15,
-        leadTimeDays: 1,
-        reorderQuantity: 60,
-        isAvailable: true,
-      },
-    ]);
+    // Seed Common 100-Unit Inventory Catalogue for Wholesalers
+    await ensureWholesalerInventory(wholeUser1._id);
+    await ensureWholesalerInventory(wholeUser2._id);
+    console.log('✅ Common 100-stock inventory seeded for wholesalers.');
 
     // Seed Wholesaler 2 Inventory
     await Inventory.insertMany([
@@ -380,61 +330,6 @@ const seedDB = async () => {
       ],
       createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
     });
-
-    // Active Multi-Item Stock Request
-    const activeMultiReq = await StockRequest.create({
-      retailer: retUser1._id,
-      productName: 'Monthly Procurement Order (Rice + Atta + Oil)',
-      category: 'Pantry Staples',
-      brand: 'Multiple',
-      quantity: 190,
-      unit: 'kg/L',
-      urgency: 'high',
-      preferredDeliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      remarks: 'Need wholesale batch for retail distribution before weekend.',
-      status: 'responded',
-      items: [
-        { productName: 'Sona Masoori Raw Rice', category: 'Pantry Staples', brand: 'Royal Harvest', quantity: 100, unit: 'kg', fulfilledQuantity: 0, remainingQuantity: 100 },
-        { productName: 'Aashirvaad Superior MP Atta', category: 'Pantry Staples', brand: 'Aashirvaad', quantity: 50, unit: 'kg', fulfilledQuantity: 0, remainingQuantity: 50 },
-        { productName: 'Fortune Sunlite Refined Sunflower Oil', category: 'Pantry Staples', brand: 'Fortune', quantity: 40, unit: 'liter', fulfilledQuantity: 0, remainingQuantity: 40 },
-      ],
-      requestedQuantity: 190,
-      fulfilledQuantity: 0,
-      remainingQuantity: 190,
-    });
-
-    // Seed competing quotations on the active request
-    await Response.create({
-      stockRequest: activeMultiReq._id,
-      wholesaler: wholeUser1._id,
-      availability: 'available',
-      quantity: 190,
-      price: 52,
-      deliveryTime: '24 hours',
-      remarks: 'Immediate dispatch available from Whitefield warehouse.',
-      items: [
-        { productName: 'Sona Masoori Raw Rice', requestedQuantity: 100, offeredQuantity: 100, price: 52, availability: 'available' },
-        { productName: 'Aashirvaad Superior MP Atta', requestedQuantity: 50, offeredQuantity: 50, price: 46, availability: 'available' },
-        { productName: 'Fortune Sunlite Refined Sunflower Oil', requestedQuantity: 40, offeredQuantity: 40, price: 135, availability: 'available' },
-      ],
-    });
-
-    await Response.create({
-      stockRequest: activeMultiReq._id,
-      wholesaler: wholeUser2._id,
-      availability: 'partial',
-      quantity: 150,
-      price: 49,
-      deliveryTime: '48 hours',
-      remarks: 'Atta & Oil fully in stock. Rice offered at 60kg due to high demand.',
-      items: [
-        { productName: 'Sona Masoori Raw Rice', requestedQuantity: 100, offeredQuantity: 60, price: 50, availability: 'partial' },
-        { productName: 'Aashirvaad Superior MP Atta', requestedQuantity: 50, offeredQuantity: 50, price: 44, availability: 'available' },
-        { productName: 'Fortune Sunlite Refined Sunflower Oil', requestedQuantity: 40, offeredQuantity: 40, price: 132, availability: 'available' },
-      ],
-    });
-
-    console.log('✅ Active multi-item request and quotations seeded.');
 
     console.log('🎉 Seeding successfully completed!');
     process.exit(0);

@@ -10,9 +10,9 @@
   import SupplierScorecardModal from '$lib/components/SupplierScorecardModal.svelte';
   import { getMapLibre, osmRasterStyle } from '$lib/maplibre.js';
 
-  // Active Tab: 'requests' | 'orders' | 'inventory' | 'predictions' | 'performance' | 'location'
-  let activeTab = $state('requests');
-  let dashboardLoading = $state(true);
+  // Active Tab: 'orders' | 'inventory' | 'predictions' | 'performance' | 'location'
+  let activeTab = $state('orders');
+  let dashboardLoading = $state(false);
 
   // Wholesaler Business Location State
   let wholesalerProfile = $state(null);
@@ -20,8 +20,8 @@
   let locCity = $state('');
   let locState = $state('');
   let locPostalCode = $state('');
-  let locLat = $state(11.6643); // Salem default
-  let locLng = $state(78.1460);
+  let locLat = $state(12.9716); // Default coordinate
+  let locLng = $state(77.5946);
   let locRadius = $state(50);
   let locSaving = $state(false);
   let locLocating = $state(false);
@@ -41,8 +41,6 @@
   let locMapError = $state(null);
 
   // Data States
-  let incomingRequests = $state([]);
-  let myBids = $state([]);
   let orders = $state([]);
   let inventory = $state([]);
   let predictions = $state([]);
@@ -56,20 +54,11 @@
   let selectedTrackingOrder = $state(null);
   let showTrackingModal = $state(false);
 
-  // Multi-item quotation state
-  let formItems = $state([]);
-  let formExpectedDeliveryDate = $state('');
-
-  // Filters for Request Feed
-  let searchFeedQuery = $state('');
-  let categoryFilter = $state('');
-  let urgencyFilter = $state('');
-
   // Stats
   let stats = $state({ pending: 0, responded: 0, accepted: 0, stockItems: 0 });
 
   // Derived KPI Calculations from real database models
-  let openRequestsCount = $derived(incomingRequests.length);
+  let catalogCount = $derived(inventory.length);
 
   let ordersToFulfillCount = $derived(
     orders.filter(o => o.status === 'accepted' || o.status === 'processing').length
@@ -97,27 +86,6 @@
   let lowStockInventory = $derived(
     inventory.filter(i => i.stockQuantity !== undefined && i.stockQuantity <= (i.minStockThreshold || 10))
   );
-
-  // Filtered Incoming Requests
-  let filteredRequests = $derived(
-    incomingRequests.filter(r => {
-      const matchSearch = !searchFeedQuery || r.productName.toLowerCase().includes(searchFeedQuery.toLowerCase()) || (r.brand && r.brand.toLowerCase().includes(searchFeedQuery.toLowerCase()));
-      const matchCategory = !categoryFilter || r.category === categoryFilter;
-      const matchUrgency = !urgencyFilter || r.urgency === urgencyFilter;
-      return matchSearch && matchCategory && matchUrgency;
-    })
-  );
-
-  // Response Form Modal State
-  let selectedRequest = $state(null);
-  let showFormModal = $state(false);
-  let formAvailability = $state('available');
-  let formQuantity = $state(0);
-  let formPrice = $state(0);
-  let formDeliveryTime = $state('24 hours');
-  let formRemarks = $state('');
-  let formError = $state('');
-  let formLoading = $state(false);
 
   // Add Inventory Form Modal State
   let showAddInvModal = $state(false);
@@ -152,43 +120,7 @@
     showConfirmModal = true;
   }
 
-  // Load Wholesaler Dashboard Requests
-  async function loadDashboardData(quiet = false) {
-    if (!auth.token) return;
-    if (!quiet) dashboardLoading = true;
-    try {
-      const reqRes = await api.get('/requests?limit=10000');
-      const allRequests = reqRes.requests || [];
 
-      const bidsList = [];
-      const incomingList = [];
-
-      for (let reqObj of allRequests) {
-        const respRes = await api.get(`/responses/request/${reqObj._id}`);
-        const respList = respRes.responses || [];
-        const myBid = respList.find(r => r.wholesaler && r.wholesaler.toString() === auth.user._id.toString());
-
-        if (myBid) {
-          bidsList.push({ ...reqObj, myBid });
-        } else if (reqObj.status !== 'accepted' && reqObj.status !== 'rejected') {
-          incomingList.push(reqObj);
-        }
-      }
-
-      incomingRequests = incomingList;
-      myBids = bidsList;
-
-      stats.pending = incomingList.length;
-      stats.responded = bidsList.length;
-      stats.accepted = bidsList.filter(b => b.myBid.status === 'accepted').length;
-
-    } catch (err) {
-      console.error('Failed to load wholesaler data:', err);
-      toasts.error('Error fetching requests');
-    } finally {
-      dashboardLoading = false;
-    }
-  }
 
   async function loadOrders() {
     ordersLoading = true;
@@ -245,105 +177,7 @@
   let availableStatusChoices = $state([]);
   let expectedDeliveryDateInput = $state('');
 
-  function openResponseForm(reqObj) {
-    selectedRequest = reqObj;
-    formAvailability = 'available';
-    formDeliveryTime = '24 hours';
-    formRemarks = '';
-    formError = '';
 
-    if (reqObj.items && Array.isArray(reqObj.items) && reqObj.items.length > 0) {
-      formItems = reqObj.items.map(it => ({
-        product: it.product,
-        productName: it.productName || it.brand || 'Item',
-        requestedQuantity: it.quantity,
-        offeredQuantity: it.quantity,
-        unitPrice: it.targetPrice || 0,
-        unit: it.unit || 'kg',
-        available: true,
-        remarks: ''
-      }));
-      formQuantity = reqObj.quantity || 0;
-      formPrice = 0;
-    } else {
-      formItems = [];
-      formQuantity = reqObj.quantity;
-      formPrice = 0;
-    }
-
-    showFormModal = true;
-  }
-
-  async function submitBid() {
-    formError = '';
-
-    const isMultiItem = formItems && formItems.length > 0;
-
-    if (isMultiItem) {
-      const availableItems = formItems.filter(it => it.available);
-      if (availableItems.length === 0) {
-        formError = 'Please mark at least one item as available.';
-        return;
-      }
-      for (const it of availableItems) {
-        if (!it.unitPrice || it.unitPrice <= 0) {
-          formError = `Please enter a valid unit price for "${it.productName}".`;
-          return;
-        }
-        if (!it.offeredQuantity || it.offeredQuantity <= 0) {
-          formError = `Please enter a valid offered quantity for "${it.productName}".`;
-          return;
-        }
-      }
-    } else {
-      if (formPrice <= 0) {
-        formError = 'Unit price must be greater than zero.';
-        return;
-      }
-      if (formQuantity <= 0) {
-        formError = 'Quantity offered must be greater than zero.';
-        return;
-      }
-    }
-
-    formLoading = true;
-    try {
-      const payload = {
-        availability: formAvailability,
-        deliveryTime: formDeliveryTime,
-        remarks: formRemarks
-      };
-
-      if (isMultiItem) {
-        payload.items = formItems.map(it => ({
-          product: it.product,
-          productName: it.productName,
-          requestedQuantity: Number(it.requestedQuantity),
-          offeredQuantity: it.available ? Number(it.offeredQuantity) : 0,
-          unitPrice: Number(it.unitPrice),
-          unit: it.unit,
-          available: it.available,
-          remarks: it.remarks || ''
-        }));
-        payload.price = payload.items.reduce((sum, it) => sum + (it.offeredQuantity * it.unitPrice), 0);
-        payload.quantity = payload.items.reduce((sum, it) => sum + it.offeredQuantity, 0);
-      } else {
-        payload.quantity = Number(formQuantity);
-        payload.price = Number(formPrice);
-      }
-
-      await api.post(`/responses/request/${selectedRequest._id}`, payload);
-
-      toasts.success('Quotation submitted successfully!');
-      showFormModal = false;
-      loadDashboardData(true);
-    } catch (err) {
-      formError = err.message || 'Failed to submit quote';
-      toasts.error(formError);
-    } finally {
-      formLoading = false;
-    }
-  }
 
   async function handleAddInventory(e) {
     e.preventDefault();
@@ -736,18 +570,12 @@
           Wholesaler Dashboard
         </h1>
         <p class="text-xs text-app-muted mt-1">
-          Monitor open market demand, submit instant price bids, and fulfill retailer stock orders.
+          Manage warehouse inventory, fulfill retailer purchase orders, and monitor delivery logistics.
         </p>
       </div>
 
       <!-- Navigation Tabs -->
       <div class="flex flex-wrap gap-1 bg-app-cardSubtle p-1.5 rounded-2xl border border-app-border">
-        <button 
-          onclick={() => activeTab = 'requests'}
-          class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'requests' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
-        >
-          📋 Demand Radar ({incomingRequests.length})
-        </button>
         <button 
           onclick={() => { activeTab = 'orders'; loadOrders(); }}
           class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {activeTab === 'orders' ? 'bg-brand-orange text-white shadow-md' : 'text-app-muted hover:text-app-text'}"
@@ -804,11 +632,11 @@
 
     <!-- 3. Real 4 KPI Cards Grid -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- KPI 1: Open Market Requests -->
+      <!-- KPI 1: Catalog Stock SKUs -->
       <div class="bg-app-card p-5 rounded-2xl border border-app-border shadow-sm hover-lift">
-        <span class="text-xs font-bold text-amber-500 uppercase tracking-wider">Open Demand Requests</span>
-        <div class="text-3xl font-extrabold font-heading text-amber-500 mt-2">{openRequestsCount}</div>
-        <span class="text-[10px] text-app-muted mt-1 block">Retailer restock postings</span>
+        <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Catalog SKUs</span>
+        <div class="text-3xl font-extrabold font-heading text-emerald-600 dark:text-emerald-400 mt-2">{catalogCount}</div>
+        <span class="text-[10px] text-app-muted mt-1 block">Active stock items</span>
       </div>
 
       <!-- KPI 2: Orders to Fulfill -->
@@ -845,12 +673,6 @@
         + Add Inventory Stock
       </button>
       <button 
-        onclick={() => activeTab = 'requests'}
-        class="px-4 py-2 text-xs font-bold bg-app-cardSubtle border border-app-border text-app-text rounded-xl hover:bg-app-border/40 transition hover-lift"
-      >
-        📋 Review Market Demand
-      </button>
-      <button 
         onclick={() => { activeTab = 'orders'; loadOrders(); }}
         class="px-4 py-2 text-xs font-bold bg-app-cardSubtle border border-app-border text-app-text rounded-xl hover:bg-app-border/40 transition hover-lift"
       >
@@ -864,97 +686,8 @@
       </button>
     </div>
 
-    {#if activeTab === 'requests'}
-      <!-- 5. Open Retailer Request Feed Panel -->
-      <div class="space-y-4">
-        <!-- Search & Filter Bar -->
-        <div class="bg-app-card p-4 rounded-2xl border border-app-border shadow-sm flex flex-wrap items-center justify-between gap-3">
-          <div class="relative flex-1 min-w-[200px]">
-            <input 
-              type="text" 
-              bind:value={searchFeedQuery}
-              placeholder="Search demand feed by product or brand..."
-              class="w-full pl-9 pr-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-            />
-            <span class="absolute left-3 top-2.5 text-app-muted text-xs">🔍</span>
-          </div>
-
-          <div class="flex items-center space-x-2">
-            <select 
-              bind:value={urgencyFilter}
-              class="px-3 py-2 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:outline-none"
-            >
-              <option value="">All Urgencies</option>
-              <option value="high">High Urgency</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-        </div>
-
-        {#if dashboardLoading}
-          <div class="space-y-4">
-            {#each Array(4) as _}
-              <div class="h-28 bg-app-card rounded-2xl border border-app-border animate-shimmer"></div>
-            {/each}
-          </div>
-        {:else if filteredRequests.length === 0}
-          <div class="bg-app-card p-12 rounded-3xl border border-app-border text-center space-y-3">
-            <div class="text-4xl">📋</div>
-            <h3 class="text-base font-bold text-app-text">No Open Requests Match Filters</h3>
-            <p class="text-xs text-app-muted max-w-sm mx-auto">
-              No new retailer stock requests are open for bidding right now. Check back soon!
-            </p>
-          </div>
-        {:else}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {#each filteredRequests as reqItem (reqItem._id)}
-              <div class="bg-app-card p-5 rounded-2xl border border-app-border shadow-sm hover-lift flex flex-col justify-between space-y-4 transition-all">
-                <div class="space-y-2">
-                  <div class="flex justify-between items-start">
-                    <div>
-                      <h3 class="text-base font-bold text-app-text">{reqItem.productName}</h3>
-                      <span class="text-xs text-app-muted">Category: {reqItem.category}</span>
-                    </div>
-                    <span class="text-[10px] px-2.5 py-1 rounded-full font-bold uppercase
-                      {reqItem.urgency === 'high' ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}"
-                    >
-                      {reqItem.urgency} Urgency
-                    </span>
-                  </div>
-
-                  <div class="p-3 bg-app-cardSubtle rounded-xl text-xs space-y-1">
-                    <div class="flex justify-between">
-                      <span class="text-app-muted">Required Quantity:</span>
-                      <strong class="text-brand-orange">{reqItem.quantity} {reqItem.unit}</strong>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-app-muted">Target Delivery Date:</span>
-                      <strong>{new Date(reqItem.preferredDeliveryDate).toLocaleDateString()}</strong>
-                    </div>
-                    {#if reqItem.remarks}
-                      <div class="text-[11px] text-app-muted italic border-t border-app-border/50 pt-1 mt-1">
-                        "{reqItem.remarks}"
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-
-                <button 
-                  onclick={() => openResponseForm(reqItem)}
-                  class="w-full py-2.5 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-xs transition hover-lift flex justify-center items-center space-x-1.5"
-                >
-                  <span>Submit Price Quote</span>
-                  <span>→</span>
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-    {:else if activeTab === 'orders'}
-      <!-- 6. Orders Requiring Fulfillment Panel -->
+    {#if activeTab === 'orders'}
+      <!-- Orders Requiring Fulfillment Panel -->
       <div class="bg-app-card p-6 rounded-3xl border border-app-border shadow-sm space-y-6">
         <h2 class="text-xl font-bold font-heading text-app-text border-b border-app-border pb-3">
           Orders Requiring Fulfillment ({orders.length})
@@ -1491,178 +1224,6 @@
 
   </div>
 </div>
-
-<!-- Submit Quotation Modal -->
-{#if showFormModal}
-  <div class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-app-card w-full max-w-2xl rounded-3xl border border-app-border shadow-2xl p-6 space-y-5 animate-toast max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b border-app-border pb-3">
-        <div>
-          <h3 class="text-lg font-bold font-heading text-app-text">Submit Quotation Offer</h3>
-          <p class="text-xs text-app-muted">Provide pricing and availability to the requesting retailer</p>
-        </div>
-        <button onclick={() => showFormModal = false} class="text-app-muted hover:text-app-text text-lg">✕</button>
-      </div>
-
-      {#if formError}
-        <div class="p-3 text-xs bg-rose-50 dark:bg-rose-950/40 text-rose-600 rounded-xl font-semibold border border-rose-200">
-          {formError}
-        </div>
-      {/if}
-
-      <div class="space-y-4 text-xs">
-        {#if formItems && formItems.length > 0}
-          <!-- Multi-Product Quotation Breakdown (Phase 9 Feature 6) -->
-          <div class="space-y-2">
-            <span class="text-xs font-bold text-brand-orange uppercase tracking-wider block">
-              Multi-Product Procurement Items ({formItems.length})
-            </span>
-            <div class="border border-app-border rounded-2xl overflow-hidden divide-y divide-app-border">
-              {#each formItems as item, idx}
-                <div class="p-3 bg-app-cardSubtle space-y-2">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-2">
-                      <input 
-                        type="checkbox" 
-                        id={`item-avail-${idx}`}
-                        bind:checked={item.available}
-                        class="accent-brand-orange rounded"
-                      />
-                      <label for={`item-avail-${idx}`} class="font-bold text-sm text-app-text cursor-pointer">
-                        {item.productName}
-                      </label>
-                      <span class="text-app-muted text-[11px]">(Requested: {item.requestedQuantity} {item.unit})</span>
-                    </div>
-                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full {item.available ? 'bg-emerald-500/20 text-emerald-500' : 'bg-rose-500/20 text-rose-500'}">
-                      {item.available ? 'Available' : 'Unavailable'}
-                    </span>
-                  </div>
-
-                  {#if item.available}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                      <div>
-                        <label for={`item-offered-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Offered Qty ({item.unit})</label>
-                        <input 
-                          id={`item-offered-${idx}`}
-                          type="number"
-                          bind:value={item.offeredQuantity}
-                          min="1"
-                          max={item.requestedQuantity}
-                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text"
-                        />
-                      </div>
-                      <div>
-                        <label for={`item-price-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Unit Price (₹)</label>
-                        <input 
-                          id={`item-price-${idx}`}
-                          type="number"
-                          bind:value={item.unitPrice}
-                          min="0"
-                          step="0.5"
-                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text font-bold text-brand-orange"
-                        />
-                      </div>
-                      <div class="col-span-2 sm:col-span-1">
-                        <label for={`item-notes-${idx}`} class="block text-[10px] text-app-muted font-bold mb-1">Item Notes</label>
-                        <input 
-                          id={`item-notes-${idx}`}
-                          type="text"
-                          bind:value={item.remarks}
-                          placeholder="Grade A / packaged"
-                          class="w-full px-2.5 py-1.5 bg-app-card border border-app-border rounded-lg text-xs text-app-text"
-                        />
-                      </div>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-
-            <!-- Total Quoted Amount Summary -->
-            <div class="p-3 bg-app-card rounded-xl border border-app-border flex justify-between items-center text-xs">
-              <span class="text-app-muted">Total Quoted Quotation Value:</span>
-              <strong class="text-sm font-bold text-brand-orange">
-                ₹{formItems.reduce((sum, it) => sum + (it.available ? (Number(it.offeredQuantity) || 0) * (Number(it.unitPrice) || 0) : 0), 0).toLocaleString()}
-              </strong>
-            </div>
-          </div>
-        {:else}
-          <!-- Single Product Quotation (Legacy backward compatibility) -->
-          <div>
-            <span class="text-app-muted block">Requesting Product:</span>
-            <strong class="text-sm font-bold text-app-text">{selectedRequest?.productName} ({selectedRequest?.quantity} {selectedRequest?.unit})</strong>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="form-price" class="block font-bold text-app-text uppercase mb-1">Offered Unit Price (₹) *</label>
-              <input 
-                id="form-price"
-                type="number" 
-                bind:value={formPrice}
-                min="0"
-                step="0.5"
-                placeholder="e.g. 45"
-                class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label for="form-quantity" class="block font-bold text-app-text uppercase mb-1">Offered Quantity *</label>
-              <input 
-                id="form-quantity"
-                type="number" 
-                bind:value={formQuantity}
-                min="1"
-                class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-              />
-            </div>
-          </div>
-        {/if}
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label for="form-delivery-time" class="block font-bold text-app-text uppercase mb-1">Lead Time / Delivery Schedule</label>
-            <input 
-              id="form-delivery-time"
-              type="text" 
-              bind:value={formDeliveryTime}
-              placeholder="Same day / 24 hours"
-              class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label for="form-remarks" class="block font-bold text-app-muted uppercase mb-1">Remarks / Offer Details</label>
-            <input 
-              id="form-remarks"
-              type="text"
-              bind:value={formRemarks}
-              placeholder="Free doorstep delivery on bulk order..."
-              class="w-full px-3.5 py-2.5 bg-app-cardSubtle border border-app-border rounded-xl text-xs text-app-text focus:ring-2 focus:ring-brand-orange focus:outline-none"
-            />
-          </div>
-        </div>
-
-        <div class="flex space-x-3 pt-2">
-          <button 
-            onclick={() => showFormModal = false}
-            class="flex-1 py-3 text-xs font-bold border border-app-border rounded-xl text-app-muted hover:text-app-text"
-          >
-            Cancel
-          </button>
-          <button 
-            onclick={submitBid}
-            disabled={formLoading}
-            class="flex-1 py-3 text-xs font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl shadow-md"
-          >
-            {formLoading ? 'Submitting...' : 'Submit Quote'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <!-- Add Inventory Item Modal -->
 {#if showAddInvModal}

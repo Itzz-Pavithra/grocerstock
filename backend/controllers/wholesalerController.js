@@ -4,6 +4,7 @@ import Order from '../models/Order.js';
 import Response from '../models/Response.js';
 import StockRequest from '../models/StockRequest.js';
 import Inventory from '../models/Inventory.js';
+import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 // Haversine formula to compute great-circle distance in kilometers between two lat/lng points
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -229,7 +230,8 @@ export const getMyPerformance = async (req, res) => {
 
 /**
  * FEATURE 10 & 11: Map-Based Supplier Discovery
- * Returns wholesalers with real coordinates, distances, and performance highlights
+ * Returns all eligible registered wholesalers with valid saved coordinates,
+ * calculated distances, and their independent stock catalogs.
  */
 export const getNearbyWholesalers = async (req, res) => {
   const { latitude, longitude, radius, category, search } = req.query;
@@ -237,33 +239,55 @@ export const getNearbyWholesalers = async (req, res) => {
   try {
     const userLat = latitude ? parseFloat(latitude) : null;
     const userLng = longitude ? parseFloat(longitude) : null;
-    const maxRadius = radius ? parseFloat(radius) : 50;
+    const maxRadius = radius ? parseFloat(radius) : null;
 
-    // Fetch active wholesalers
-    const activeWholesalerUsers = await User.find({ role: 'wholesaler', isActive: true });
+    // 1. Fetch active wholesaler accounts
+    const activeWholesalerUsers = await User.find({ role: 'wholesaler', isActive: { $ne: false } });
     const userIds = activeWholesalerUsers.map((u) => u._id);
 
+    // 2. Fetch Wholesaler business profiles for these users
     const wholesalers = await Wholesaler.find({ user: { $in: userIds } });
+
+    // Build a map of profiles by user ID
+    const profileMap = new Map();
+    for (const w of wholesalers) {
+      profileMap.set(w.user.toString(), w);
+    }
 
     const results = [];
 
-    for (const w of wholesalers) {
-      // Coordinate fallback: use latitude/longitude or location.coordinates
-      let lat = w.latitude;
-      let lng = w.longitude;
-
-      if ((lat === null || lat === undefined) && w.location && w.location.coordinates && w.location.coordinates.length === 2) {
-        lng = w.location.coordinates[0];
-        lat = w.location.coordinates[1];
+    for (const user of activeWholesalerUsers) {
+      let w = profileMap.get(user._id.toString());
+      if (!w) {
+        // If wholesaler profile is missing, locate or create placeholder
+        w = await Wholesaler.findOne({ user: user._id });
+        if (!w) continue;
       }
 
-      // Calculate distance if user coordinates provided
-      const distanceKm = userLat !== null && userLng !== null && lat !== null && lng !== null
+      // Coordinate resolution: check both w.latitude/w.longitude and w.location.coordinates
+      let lat = typeof w.latitude === 'number' && !isNaN(w.latitude) ? w.latitude : null;
+      let lng = typeof w.longitude === 'number' && !isNaN(w.longitude) ? w.longitude : null;
+
+      if ((lat === null || lng === null) && w.location && Array.isArray(w.location.coordinates) && w.location.coordinates.length === 2) {
+        lng = typeof w.location.coordinates[0] === 'number' ? w.location.coordinates[0] : parseFloat(w.location.coordinates[0]);
+        lat = typeof w.location.coordinates[1] === 'number' ? w.location.coordinates[1] : parseFloat(w.location.coordinates[1]);
+      }
+
+      // Valid coordinates check: lat between -90 and 90, lng between -180 and 180
+      if (lat === null || lng === null || isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        continue;
+      }
+
+      // Ensure wholesaler has common inventory initialized in MongoDB
+      await ensureWholesalerInventory(user._id);
+
+      // Distance calculation if user coordinates provided
+      const distanceKm = (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng))
         ? calculateHaversineDistance(userLat, userLng, lat, lng)
         : null;
 
-      // Filter by radius if user provided coordinates and radius
-      if (distanceKm !== null && radius && distanceKm > maxRadius) {
+      // Filter by radius if user provided coordinates and radius is specified
+      if (distanceKm !== null && maxRadius !== null && !isNaN(maxRadius) && distanceKm > maxRadius) {
         continue;
       }
 
@@ -282,7 +306,7 @@ export const getNearbyWholesalers = async (req, res) => {
       }
 
       // Filter by category
-      if (category && category !== 'All') {
+      if (category && category !== 'All' && category.trim()) {
         const matchesCategory = (w.categoriesSupplied || []).some(
           (c) => c.toLowerCase() === category.toLowerCase()
         );
@@ -292,16 +316,16 @@ export const getNearbyWholesalers = async (req, res) => {
       }
 
       // Quick performance metrics summary
-      const completedOrdersCount = await Order.countDocuments({ wholesaler: w.user, status: 'delivered' });
-      const totalOrdersCount = await Order.countDocuments({ wholesaler: w.user });
+      const completedOrdersCount = await Order.countDocuments({ wholesaler: user._id, status: 'delivered' });
+      const totalOrdersCount = await Order.countDocuments({ wholesaler: user._id });
       const fulfillmentRate = totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : null;
 
-      // Real Inventory stock items for this wholesaler
+      // Real Inventory stock items for this wholesaler (independent stock)
       const stockRecords = await Inventory.find({
-        wholesaler: w.user,
+        wholesaler: user._id,
         isAvailable: true,
         stockQuantity: { $gt: 0 },
-      }).limit(5);
+      }).sort({ productName: 1 });
 
       const deliveryRadius = w.deliveryRadiusKm || 25;
       const isDeliveryAvailable = distanceKm !== null ? distanceKm <= deliveryRadius : true;
@@ -309,13 +333,13 @@ export const getNearbyWholesalers = async (req, res) => {
 
       results.push({
         _id: w._id,
-        wholesalerId: w.user,
-        companyName: w.companyName,
-        phone: w.phone,
-        address: w.address,
-        city: w.city,
-        state: w.state,
-        postalCode: w.postalCode,
+        wholesalerId: user._id,
+        companyName: w.companyName || user.email.split('@')[0],
+        phone: w.phone || '',
+        address: w.address || '',
+        city: w.city || '',
+        state: w.state || '',
+        postalCode: w.postalCode || '',
         latitude: lat,
         longitude: lng,
         categoriesSupplied: w.categoriesSupplied || [],
@@ -327,6 +351,7 @@ export const getNearbyWholesalers = async (req, res) => {
           _id: item._id,
           productName: item.productName,
           category: item.category,
+          brand: item.brand || '',
           quantity: item.stockQuantity,
           unit: item.unit,
           unitPrice: item.unitPrice,
@@ -348,6 +373,41 @@ export const getNearbyWholesalers = async (req, res) => {
     });
 
     res.json({ success: true, wholesalers: results, count: results.length });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Returns complete stock inventory belonging specifically to the requested wholesaler
+ */
+export const getWholesalerInventory = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    let targetUserId = id;
+    const wholesalerDoc = await Wholesaler.findById(id);
+    if (wholesalerDoc) {
+      targetUserId = wholesalerDoc.user;
+    } else {
+      const userDoc = await User.findById(id);
+      if (userDoc && userDoc.role === 'wholesaler') {
+        targetUserId = userDoc._id;
+      }
+    }
+
+    await ensureWholesalerInventory(targetUserId);
+
+    const items = await Inventory.find({ wholesaler: targetUserId, isAvailable: true }).sort({ productName: 1 });
+    const profile = await Wholesaler.findOne({ user: targetUserId });
+
+    res.json({
+      success: true,
+      wholesalerId: targetUserId,
+      companyName: profile?.companyName || 'Wholesale Supplier',
+      inventory: items,
+      count: items.length,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -73,11 +73,18 @@
   let currentLat = $state(11.6643);
   let currentLng = $state(78.1460);
 
+  let expandedStockWholesalerId = $state(null);
+
   $effect(() => {
     if (userLocation?.latitude && userLocation?.longitude) {
-      currentLat = Number(userLocation.latitude);
-      currentLng = Number(userLocation.longitude);
-      locationLabel = userLocation.address || userLocation.city || 'Your Registered Location';
+      const uLat = Number(userLocation.latitude);
+      const uLng = Number(userLocation.longitude);
+      if (uLat !== currentLat || uLng !== currentLng) {
+        currentLat = uLat;
+        currentLng = uLng;
+        locationLabel = userLocation.address || userLocation.city || 'Your Registered Location';
+        loadWholesalers();
+      }
     }
   });
 
@@ -96,6 +103,18 @@
       const res = await api.get(`/wholesalers/nearby?${params.toString()}`);
       wholesalers = res.wholesalers || [];
       updateMapMarkers();
+
+      // Automatically fit bounds so all eligible wholesalers appear on the map
+      if (wholesalers.length > 0 && mapInstance && browser) {
+        getMapLibre().then(maplibregl => {
+          const bounds = new maplibregl.LngLatBounds();
+          if (currentLat && currentLng) bounds.extend([currentLng, currentLat]);
+          wholesalers.forEach(w => {
+            if (w.longitude && w.latitude) bounds.extend([w.longitude, w.latitude]);
+          });
+          mapInstance.fitBounds(bounds, { padding: 60, maxZoom: 13 });
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error('Failed to load wholesalers:', err);
       toasts.error('Failed to fetch nearby suppliers');
@@ -416,7 +435,11 @@
   // Real Road Directions (OSRM / Routing API)
   async function getDirections(w) {
     if (!w || !w.latitude || !w.longitude) {
-      toasts.error('Selected wholesaler has no valid coordinates.');
+      toasts.error('Directions are unavailable because this wholesaler has not saved a valid location.');
+      return;
+    }
+    if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) {
+      toasts.error('Directions are unavailable because your starting location is not set. Please click on the map or use your device location.');
       return;
     }
 
@@ -813,19 +836,34 @@
               <!-- Available Live Stock -->
               {#if w.availableStock && w.availableStock.length > 0}
                 <div class="p-2.5 rounded-lg bg-app-cardSubtle border border-app-border/60 my-2">
-                  <div class="text-[11px] font-bold text-app-text flex items-center gap-1.5 mb-1.5">
-                    <Package class="h-3.5 w-3.5 text-brand-orange" />
-                    <span>Available Stock:</span>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="text-[11px] font-bold text-app-text flex items-center gap-1.5">
+                      <Package class="h-3.5 w-3.5 text-brand-orange" />
+                      <span>Available Stock ({w.availableStock.length}):</span>
+                    </div>
+                    {#if w.availableStock.length > 4}
+                      <button
+                        type="button"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          expandedStockWholesalerId = expandedStockWholesalerId === w._id ? null : w._id;
+                        }}
+                        class="text-[10px] text-brand-orange font-semibold hover:underline"
+                      >
+                        {expandedStockWholesalerId === w._id ? 'Show less' : `View all (${w.availableStock.length})`}
+                      </button>
+                    {/if}
                   </div>
-                  <div class="flex flex-wrap gap-1.5">
-                    {#each w.availableStock.slice(0, 4) as stockItem}
-                      <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-app-card border border-app-border text-app-text">
-                        <b class="text-brand-orange">{stockItem.productName}</b> - {stockItem.quantity} {stockItem.unit}
+                  <div class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                    {#each (expandedStockWholesalerId === w._id ? w.availableStock : w.availableStock.slice(0, 4)) as stockItem}
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-app-card border border-app-border text-app-text flex items-center gap-1">
+                        <b class="text-brand-orange">{stockItem.productName}</b>
+                        <span class="text-app-textMuted">• {stockItem.quantity} {stockItem.unit}</span>
+                        {#if stockItem.unitPrice}
+                          <span class="text-emerald-600 font-bold">₹{stockItem.unitPrice}</span>
+                        {/if}
                       </span>
                     {/each}
-                    {#if w.availableStock.length > 4}
-                      <span class="text-[10px] text-app-textMuted self-center">+{w.availableStock.length - 4} more</span>
-                    {/if}
                   </div>
                 </div>
               {/if}

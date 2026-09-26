@@ -1,10 +1,12 @@
 import Inventory from '../models/Inventory.js';
 import Order from '../models/Order.js';
+import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 export const getMyInventory = async (req, res) => {
   try {
-    const items = await Inventory.find({ wholesaler: req.user._id }).sort({ updatedAt: -1 });
-    res.json({ success: true, inventory: items });
+    await ensureWholesalerInventory(req.user._id);
+    const items = await Inventory.find({ wholesaler: req.user._id }).sort({ productName: 1 });
+    res.json({ success: true, inventory: items, count: items.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
