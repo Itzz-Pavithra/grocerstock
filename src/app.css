@@ -7,40 +7,48 @@
 
 
 :root {
-  --color-primary: #FD6F2F;
-  --color-primary-hover: #E0561A;
-  --color-primary-light: #FFF0E8;
+  --color-primary: #D4A72C;
+  --color-primary-hover: #B88E1E;
+  --color-primary-light: #FAF4E3;
   
-  --color-bg: #FFFBF5;
+  --color-bg: #F7F5EF;
   --color-surface: #FFFFFF;
-  --color-surface-subtle: #F7F5EC;
-  --color-surface-secondary: #DCE4B8;
+  --color-surface-subtle: #EFECE2;
+  --color-surface-secondary: #B9DDE5;
   
-  --color-text: #2A2E1D;
-  --color-text-muted: #515739;
-  --color-border: #E6E4D9;
+  --color-text: #202124;
+  --color-text-muted: #5F6368;
+  --color-border: #E2DDD0;
+
+  --color-charcoal: #202124;
+  --color-pale-blue: #B9DDE5;
+  --color-mustard: #D4A72C;
 }
 
 .dark {
-  --color-primary: #FD6F2F;
-  --color-primary-hover: #FF854E;
-  --color-primary-light: #3D2315;
+  --color-primary: #D4A72C;
+  --color-primary-hover: #E4BA3D;
+  --color-primary-light: #332B18;
   
-  --color-bg: #1B1E13;
-  --color-surface: #262B1C;
-  --color-surface-subtle: #303723;
-  --color-surface-secondary: #3D442E;
+  --color-bg: #18191B;
+  --color-surface: #202124;
+  --color-surface-subtle: #292B2F;
+  --color-surface-secondary: #33363C;
   
-  --color-text: #F4F6EC;
-  --color-text-muted: #CBD4A5;
-  --color-border: #3F472F;
+  --color-text: #F7F5EF;
+  --color-text-muted: #B9DDE5;
+  --color-border: #32353B;
+
+  --color-charcoal: #202124;
+  --color-pale-blue: #B9DDE5;
+  --color-mustard: #D4A72C;
 }
 
 @layer base {
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
-    @apply font-body antialiased selection:bg-brand-sage selection:text-brand-olive transition-colors duration-200;
+    @apply font-body antialiased selection:bg-brand-paleBlue selection:text-brand-charcoal transition-colors duration-200;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -59,6 +67,28 @@
 ::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
   border-radius: 9999px;
+}
+
+/* 3D & Perspective Utilities */
+.perspective-container {
+  perspective: 1200px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* Glow Effects */
+.glow-mustard {
+  box-shadow: 0 10px 30px -10px rgba(212, 167, 44, 0.45);
+}
+.glow-mustard-lg {
+  box-shadow: 0 20px 45px -12px rgba(212, 167, 44, 0.55);
+}
+.glow-paleblue {
+  box-shadow: 0 10px 30px -10px rgba(185, 221, 229, 0.4);
+}
+.glow-charcoal {
+  box-shadow: 0 20px 50px -15px rgba(32, 33, 36, 0.35);
 }
 
 /* Animations */
@@ -84,6 +114,86 @@
 }
 .animate-slow-float {
   animation: float-slow 7s ease-in-out infinite;
+}
+
+/* 3D Dashboard Floating Animations */
+@keyframes float-3d-main {
+  0%, 100% {
+    transform: rotateX(7deg) rotateY(-9deg) translateY(0px);
+  }
+  50% {
+    transform: rotateX(3deg) rotateY(-4deg) translateY(-16px);
+  }
+}
+.animate-float-3d {
+  animation: float-3d-main 8s ease-in-out infinite;
+}
+
+@keyframes float-chip-up {
+  0%, 100% {
+    transform: translateZ(40px) translateY(0px);
+  }
+  50% {
+    transform: translateZ(60px) translateY(-14px);
+  }
+}
+.animate-float-chip-1 {
+  animation: float-chip-up 6s ease-in-out infinite;
+}
+
+@keyframes float-chip-down {
+  0%, 100% {
+    transform: translateZ(35px) translateY(0px);
+  }
+  50% {
+    transform: translateZ(55px) translateY(12px);
+  }
+}
+.animate-float-chip-2 {
+  animation: float-chip-down 7s ease-in-out 0.8s infinite;
+}
+
+@keyframes float-chip-side {
+  0%, 100% {
+    transform: translateZ(45px) translateX(0px) translateY(0px);
+  }
+  50% {
+    transform: translateZ(65px) translateX(-6px) translateY(-10px);
+  }
+}
+.animate-float-chip-3 {
+  animation: float-chip-side 6.5s ease-in-out 1.5s infinite;
+}
+
+/* Ambient Moving Gradient Orbs */
+@keyframes orb-move-1 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(40px, -30px) scale(1.12);
+  }
+  66% {
+    transform: translate(-30px, 20px) scale(0.92);
+  }
+}
+.animate-orb-1 {
+  animation: orb-move-1 14s ease-in-out infinite;
+}
+
+@keyframes orb-move-2 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(-35px, 25px) scale(0.95);
+  }
+  66% {
+    transform: translate(25px, -35px) scale(1.1);
+  }
+}
+.animate-orb-2 {
+  animation: orb-move-2 16s ease-in-out infinite;
 }
 
 @keyframes wave-pulse {

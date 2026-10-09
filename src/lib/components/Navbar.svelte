@@ -83,7 +83,7 @@
       <!-- Left side -->
       <div class="flex items-center space-x-8">
         <a href="/" class="flex items-center space-x-2.5 group">
-          <div class="h-9 w-9 rounded-xl bg-brand-orange flex items-center justify-center text-white font-heading font-extrabold text-lg shadow-sm group-hover:scale-105 transition-transform">
+          <div class="h-9 w-9 rounded-xl bg-brand-orange flex items-center justify-center text-brand-charcoal font-heading font-extrabold text-lg shadow-sm group-hover:scale-105 transition-transform">
             G
           </div>
           <span class="text-app-text font-heading text-lg font-bold tracking-tight">{i18n.t('brandName')}</span>
@@ -231,7 +231,7 @@
           <a href="/auth" class="px-4 py-2 text-sm font-semibold text-app-text hover:text-brand-orange transition-colors">
             {i18n.t('signIn')}
           </a>
-          <a href="/auth?register=true" class="px-4 py-2 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-white rounded-xl transition-all shadow-sm hover-lift">
+          <a href="/auth?register=true" class="px-4 py-2 text-sm font-bold bg-brand-orange hover:bg-brand-orange/90 text-brand-charcoal rounded-xl transition-all shadow-sm hover-lift">
             {i18n.t('getStarted')}
           </a>
         {/if}

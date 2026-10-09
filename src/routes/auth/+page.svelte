@@ -427,9 +427,9 @@
 <div class="min-h-[calc(100vh-4rem)] flex flex-col lg:flex-row bg-app-bg transition-colors duration-200">
   <!-- Left Side static benefits panel -->
   <div class="lg:w-1/2 bg-brand-olive text-white flex flex-col justify-between p-8 sm:p-16 relative overflow-hidden">
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-olive via-brand-olive to-[#3A3F29] opacity-95 z-0"></div>
-    <div class="absolute -top-16 -left-16 w-64 h-64 bg-brand-orange rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
-    <div class="absolute -bottom-16 -right-16 w-64 h-64 bg-brand-sage rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-[#202124] via-[#202124] to-[#141517] opacity-95 z-0"></div>
+    <div class="absolute -top-16 -left-16 w-64 h-64 bg-[#D4A72C] rounded-full mix-blend-screen filter blur-3xl opacity-25"></div>
+    <div class="absolute -bottom-16 -right-16 w-64 h-64 bg-[#B9DDE5] rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
 
     <div class="z-10 flex flex-col h-full justify-between">
       <div class="flex items-center space-x-3">

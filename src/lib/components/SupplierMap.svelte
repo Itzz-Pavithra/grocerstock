@@ -384,8 +384,8 @@
           const el = document.createElement('div');
           el.className = 'wholesaler-pin cursor-pointer transform hover:scale-110 transition-transform duration-150';
           el.innerHTML = `
-            <div style="background-color: #FD6F2F; color: white; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            <div style="background-color: #D4A72C; color: #202124; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.08);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             </div>
           `;
 
@@ -410,7 +410,7 @@
             <div style="font-family: inherit; min-width: 210px; padding: 6px;">
               <div style="font-weight: 700; font-size: 14px; color: #1e293b; margin-bottom: 2px;">${w.companyName}</div>
               <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">📍 ${w.address || ''}${w.city ? `, ${w.city}` : ''}</div>
-              ${distanceTag ? `<div style="font-size: 11px; color: #FD6F2F; margin-bottom: 4px;">🚗 ${distanceTag}</div>` : ''}
+              ${distanceTag ? `<div style="font-size: 11px; color: #D4A72C; font-weight: 700; margin-bottom: 4px;">🚗 ${distanceTag}</div>` : ''}
               ${deliveryStatusHtml}
               <div style="font-size: 11px; color: #047857; font-weight: 600; margin-bottom: 4px;">
                 ✓ Fulfillment: ${w.performance?.fulfillmentRate || '98%'} (${w.performance?.completedOrders || 0} orders)
@@ -421,7 +421,7 @@
                   href="https://www.google.com/maps/dir/?api=1&origin=${currentLat},${currentLng}&destination=${w.latitude},${w.longitude}" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;"
+                  style="background: #202124; color: #F7F5EF; padding: 4px 10px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"
                 >
                   Maps ↗
                 </a>
@@ -513,7 +513,7 @@
               'line-cap': 'round',
             },
             paint: {
-              'line-color': '#2563eb',
+              'line-color': '#D4A72C',
               'line-width': 5,
               'line-opacity': 0.85,
             },
