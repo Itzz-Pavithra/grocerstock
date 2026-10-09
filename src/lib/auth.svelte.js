@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
 
 class AuthStore {
   user = $state(null);
@@ -41,7 +42,7 @@ class AuthStore {
     }
   }
 
-  clearSession() {
+  clearSession(redirectTo = '/auth') {
     this.user = null;
     this.token = null;
     if (browser) {
@@ -52,7 +53,18 @@ class AuthStore {
       } catch (e) {
         console.warn('Could not clear auth from storage:', e);
       }
+      if (redirectTo) {
+        try {
+          goto(redirectTo, { replaceState: true });
+        } catch (_) {
+          window.location.replace(redirectTo);
+        }
+      }
     }
+  }
+
+  async logout(redirectTo = '/auth') {
+    this.clearSession(redirectTo);
   }
 
   get isAuthenticated() {

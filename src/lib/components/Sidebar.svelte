@@ -1,5 +1,6 @@
 <script>
   import { auth } from '$lib/auth.svelte.js';
+  import { theme } from '$lib/theme.svelte.js';
   import { i18n } from '$lib/i18n.svelte.js';
   import {
     LayoutDashboard,
@@ -27,7 +28,9 @@
     Bell,
     CheckCircle2,
     Calendar,
-    Award
+    Award,
+    Sun,
+    Moon
   } from 'lucide-svelte';
 
   let {
@@ -64,8 +67,7 @@
     { id: 'map', label: 'Supplier Map', icon: MapPin },
     { id: 'priceintelligence', label: 'Price Intelligence', icon: TrendingUp },
     { id: 'stockout', label: 'Stockout Predictions', icon: Calendar },
-    { id: 'profitability', label: 'Store Profitability', icon: Coins },
-    { id: 'profile', label: 'Store Profile', icon: Settings }
+    { id: 'profitability', label: 'Store Profitability', icon: Coins }
   ];
 
   const wholesalerItems = [
@@ -115,18 +117,34 @@
     </div>
   </div>
 
-  <button
-    onclick={toggleMobile}
-    type="button"
-    class="p-2 rounded-xl bg-white/10 text-[#F7F5EF] hover:bg-white/20 transition-colors"
-    aria-label="Toggle navigation menu"
-  >
-    {#if isMobileOpen}
-      <X class="w-5 h-5" />
-    {:else}
-      <Menu class="w-5 h-5" />
-    {/if}
-  </button>
+  <div class="flex items-center space-x-2">
+    <button
+      onclick={() => theme.toggle()}
+      type="button"
+      class="p-2 rounded-xl bg-white/10 text-[#F7F5EF] hover:bg-white/20 transition-colors"
+      title={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      aria-label={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+    >
+      {#if theme.isDark}
+        <Sun class="w-5 h-5 text-[#D4A72C]" />
+      {:else}
+        <Moon class="w-5 h-5 text-[#B9DDE5]" />
+      {/if}
+    </button>
+
+    <button
+      onclick={toggleMobile}
+      type="button"
+      class="p-2 rounded-xl bg-white/10 text-[#F7F5EF] hover:bg-white/20 transition-colors"
+      aria-label="Toggle navigation menu"
+    >
+      {#if isMobileOpen}
+        <X class="w-5 h-5" />
+      {:else}
+        <Menu class="w-5 h-5" />
+      {/if}
+    </button>
+  </div>
 </div>
 
 <!-- Mobile Backdrop -->
@@ -229,25 +247,41 @@
     {/each}
   </div>
 
-  <!-- Bottom: User Card & Logout -->
+  <!-- Bottom: User Card & Theme Toggle & Logout -->
   <div class="p-3 border-t border-white/10 bg-black/20">
-    <div class="flex items-center {isCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-2xl">
+    <div class="flex items-center {isCollapsed ? 'flex-col gap-2' : 'justify-between'} p-2 rounded-2xl">
       {#if !isCollapsed}
-        <div class="truncate max-w-[170px]">
+        <div class="truncate max-w-[150px]">
           <div class="text-xs font-bold text-white truncate">{auth.user?.email || 'Logged In User'}</div>
           <div class="text-[10px] text-[#B9DDE5] capitalize truncate">{auth.user?.role || 'User'}</div>
         </div>
       {/if}
 
-      <button
-        onclick={() => auth.clearSession()}
-        type="button"
-        title="Sign Out"
-        class="p-2 rounded-xl hover:bg-rose-500/20 text-white/60 hover:text-rose-400 transition-colors"
-        aria-label="Sign Out"
-      >
-        <LogOut class="w-4 h-4" />
-      </button>
+      <div class="flex items-center space-x-1">
+        <button
+          onclick={() => theme.toggle()}
+          type="button"
+          title={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          class="p-2 rounded-xl hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+          aria-label={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {#if theme.isDark}
+            <Sun class="w-4 h-4 text-[#D4A72C]" />
+          {:else}
+            <Moon class="w-4 h-4 text-[#B9DDE5]" />
+          {/if}
+        </button>
+
+        <button
+          onclick={() => auth.logout('/auth')}
+          type="button"
+          title="Sign Out"
+          class="p-2 rounded-xl hover:bg-rose-500/20 text-white/60 hover:text-rose-400 transition-colors"
+          aria-label="Sign Out"
+        >
+          <LogOut class="w-4 h-4" />
+        </button>
+      </div>
     </div>
   </div>
 </aside>

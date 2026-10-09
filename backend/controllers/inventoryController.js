@@ -1,11 +1,9 @@
 import Inventory from '../models/Inventory.js';
 import Order from '../models/Order.js';
-import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 import { safeExactRegex } from '../utils/regex.js';
 
 export const getMyInventory = async (req, res) => {
   try {
-    await ensureWholesalerInventory(req.user._id);
     const items = await Inventory.find({ wholesaler: req.user._id }).sort({ productName: 1 });
     res.json({ success: true, inventory: items, count: items.length });
   } catch (error) {

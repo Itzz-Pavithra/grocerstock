@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/auth.svelte.js';
+  import { theme } from '$lib/theme.svelte.js';
   import { api } from '$lib/api.js';
   import { i18n } from '$lib/i18n.svelte.js';
   import { toasts } from '$lib/toasts.svelte.js';
@@ -29,7 +30,9 @@
     BarChart3,
     TrendingUp,
     Calendar,
-    Package
+    Package,
+    Sun,
+    Moon
   } from 'lucide-svelte';
 
   // Active Tab — matches Sidebar IDs
@@ -445,6 +448,32 @@
   <!-- MAIN SCROLLABLE AREA -->
   <div class="flex-1 overflow-y-auto min-w-0 transition-colors duration-200">
     <div class="p-5 lg:p-7 space-y-6 max-w-7xl">
+
+      <!-- Retailer Top Bar / Theme Toggle Header -->
+      <div class="flex items-center justify-between pb-4 border-b border-app-border">
+        <div class="flex items-center space-x-2 text-xs text-app-textMuted">
+          <span class="inline-block w-2 h-2 rounded-full bg-[#D4A72C]"></span>
+          <span class="font-bold text-app-text font-heading">Retailer Hub</span>
+          <span class="opacity-40">/</span>
+          <span class="capitalize font-medium">{activeTab.replace(/_/g, ' ')}</span>
+        </div>
+
+        <button
+          onclick={() => theme.toggle()}
+          type="button"
+          class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl border border-app-border bg-app-card hover:bg-app-cardSubtle text-app-text text-xs font-bold transition shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D4A72C]/50"
+          title={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          aria-label={theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {#if theme.isDark}
+            <Sun class="w-4 h-4 text-[#D4A72C]" />
+            <span>Light Mode</span>
+          {:else}
+            <Moon class="w-4 h-4 text-[#202124]" />
+            <span>Dark Mode</span>
+          {/if}
+        </button>
+      </div>
 
       <!-- ===== OVERVIEW ===== -->
       {#if activeTab === 'overview'}
@@ -1154,38 +1183,6 @@
               {/if}
             </div>
           {/if}
-        </div>
-
-      <!-- ===== PROFILE ===== -->
-      {:else if activeTab === 'profile'}
-        <div>
-          <div class="mb-4">
-            <div class="text-xs font-bold text-[#D4A72C] uppercase tracking-widest">Account</div>
-            <h1 class="text-2xl font-extrabold font-heading text-app-text mt-1">Store Profile</h1>
-          </div>
-          <div class="bg-app-card p-6 rounded-3xl border border-app-border shadow-sm space-y-4 max-w-xl">
-            <div class="flex items-center space-x-4">
-              <div class="w-16 h-16 rounded-2xl bg-[#D4A72C]/20 flex items-center justify-center text-2xl font-black text-[#D4A72C]">
-                {auth.user?.email?.charAt(0).toUpperCase() || 'R'}
-              </div>
-              <div>
-                <p class="font-bold text-app-text">{auth.user?.email}</p>
-                <p class="text-xs text-app-textMuted capitalize">{auth.user?.role} Account</p>
-                <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold">Email Verified</span>
-              </div>
-            </div>
-            {#if retailerProfile}
-              <div class="grid grid-cols-2 gap-3 pt-3 border-t border-app-border text-xs">
-                {#if retailerProfile.companyName}<div><span class="text-app-textMuted block font-bold uppercase tracking-wider text-[10px]">Store Name</span><span class="font-bold text-app-text">{retailerProfile.companyName}</span></div>{/if}
-                {#if retailerProfile.address}<div><span class="text-app-textMuted block font-bold uppercase tracking-wider text-[10px]">Address</span><span class="font-bold text-app-text">{retailerProfile.address}</span></div>{/if}
-                {#if retailerProfile.city}<div><span class="text-app-textMuted block font-bold uppercase tracking-wider text-[10px]">City</span><span class="font-bold text-app-text">{retailerProfile.city}</span></div>{/if}
-                {#if retailerProfile.phone}<div><span class="text-app-textMuted block font-bold uppercase tracking-wider text-[10px]">Phone</span><span class="font-bold text-app-text">{retailerProfile.phone}</span></div>{/if}
-              </div>
-            {/if}
-            <div class="pt-3 border-t border-app-border">
-              <button onclick={() => auth.clearSession()} class="px-4 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/30 rounded-xl transition">Sign Out</button>
-            </div>
-          </div>
         </div>
       {/if}
 

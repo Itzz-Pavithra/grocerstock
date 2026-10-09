@@ -4,7 +4,6 @@ import Order from '../models/Order.js';
 import Response from '../models/Response.js';
 import StockRequest from '../models/StockRequest.js';
 import Inventory from '../models/Inventory.js';
-import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 // Haversine formula to compute great-circle distance in kilometers between two lat/lng points
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -294,9 +293,6 @@ export const getNearbyWholesalers = async (req, res) => {
         continue;
       }
 
-      // Ensure wholesaler has common inventory initialized in MongoDB
-      await ensureWholesalerInventory(user._id);
-
       // Distance calculation if user coordinates provided
       const distanceKm = (userLat !== null && userLng !== null && !isNaN(userLat) && !isNaN(userLng))
         ? calculateHaversineDistance(userLat, userLng, lat, lng)
@@ -416,8 +412,6 @@ export const getWholesalerInventory = async (req, res) => {
         targetUserId = userDoc._id;
       }
     }
-
-    await ensureWholesalerInventory(targetUserId);
 
     const items = await Inventory.find({ wholesaler: targetUserId, isAvailable: true }).sort({ productName: 1 });
     const profile = await Wholesaler.findOne({ user: targetUserId });

@@ -729,7 +729,7 @@
               </div>
             </div>
             <div class="pt-3 border-t border-app-border">
-              <button onclick={() => auth.clearSession()} class="px-4 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/30 rounded-xl transition">Sign Out</button>
+              <button onclick={() => auth.logout('/auth')} class="px-4 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/30 rounded-xl transition">Sign Out</button>
             </div>
           </div>
         </div>

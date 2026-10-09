@@ -6,7 +6,6 @@ import Retailer from '../models/Retailer.js';
 import Wholesaler from '../models/Wholesaler.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import { sendOtpEmail } from '../services/emailService.js';
-import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 import { getJwtSecret } from '../config/security.js';
 
 const generateToken = (id) => {
@@ -308,7 +307,6 @@ export const verifyOtp = async (req, res) => {
           };
         }
         await Wholesaler.create(profilePayload);
-        await ensureWholesalerInventory(user._id);
       }
 
       // Clean up pending registration
