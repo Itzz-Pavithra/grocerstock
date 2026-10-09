@@ -97,6 +97,10 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    retailerInventoryUpdated: {
+      type: Boolean,
+      default: false,
+    },
     statusHistory: [
       {
         status: { type: String, required: true },
@@ -115,6 +119,11 @@ orderSchema.methods.canTransitionTo = function (nextStatus) {
   const allowed = VALID_TRANSITIONS[current] || [];
   return allowed.includes(nextStatus);
 };
+
+orderSchema.index({ retailer: 1, createdAt: -1 });
+orderSchema.index({ wholesaler: 1, createdAt: -1 });
+orderSchema.index({ quotation: 1 });
+orderSchema.index({ status: 1 });
 
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 export default Order;

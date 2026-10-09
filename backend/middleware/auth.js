@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { getJwtSecret } from '../config/security.js';
 
 export const protect = async (req, res, next) => {
   let token = null;
@@ -19,7 +20,7 @@ export const protect = async (req, res, next) => {
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'supersecretkey_localgrocery_2026';
+    const secret = getJwtSecret();
     const decoded = jwt.verify(token, secret);
 
     const user = await User.findById(decoded.id).select('-password');

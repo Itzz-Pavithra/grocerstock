@@ -31,6 +31,8 @@
   
   <!-- Ambient Moving Floating Orbs (Background 3D Ambiance) -->
   <div class="pointer-events-none absolute inset-0 overflow-hidden z-0">
+    <!-- Subtle produce ambient photo texture overlay -->
+    <div class="absolute inset-0 bg-cover bg-center opacity-[0.06] dark:opacity-[0.10] mix-blend-luminosity filter blur-[0.5px]" style="background-image: url('/grocery_produce_bg.jpg')"></div>
     <div class="absolute -top-24 -left-20 w-96 h-96 rounded-full bg-[#D4A72C]/15 blur-3xl animate-orb-1"></div>
     <div class="absolute top-1/3 -right-24 w-[28rem] h-[28rem] rounded-full bg-[#B9DDE5]/25 blur-3xl animate-orb-2"></div>
     <div class="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-[#202124]/10 dark:bg-[#D4A72C]/10 blur-3xl animate-orb-1"></div>

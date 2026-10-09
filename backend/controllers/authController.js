@@ -7,9 +7,10 @@ import Wholesaler from '../models/Wholesaler.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import { sendOtpEmail } from '../services/emailService.js';
 import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
+import { getJwtSecret } from '../config/security.js';
 
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'supersecretkey_localgrocery_2026', {
+  return jwt.sign({ id }, getJwtSecret(), {
     expiresIn: '30d',
   });
 };

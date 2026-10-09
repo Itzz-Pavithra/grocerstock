@@ -88,5 +88,8 @@ stockRequestSchema.pre('save', function () {
   }
 });
 
+stockRequestSchema.index({ retailer: 1, createdAt: -1 });
+stockRequestSchema.index({ status: 1, createdAt: -1 });
+
 const StockRequest = mongoose.models.StockRequest || mongoose.model('StockRequest', stockRequestSchema);
 export default StockRequest;

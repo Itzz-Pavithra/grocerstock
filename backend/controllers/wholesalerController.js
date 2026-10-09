@@ -264,6 +264,11 @@ export const getNearbyWholesalers = async (req, res) => {
         if (!w) continue;
       }
 
+      // Filter out rejected or unapproved suppliers from active discovery
+      if (w.businessVerification?.status === 'rejected') {
+        continue;
+      }
+
       // Coordinate resolution: check w.latitude/w.longitude (Number or String) and w.location.coordinates
       let lat = null;
       let lng = null;

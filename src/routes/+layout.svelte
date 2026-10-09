@@ -5,11 +5,19 @@
 	import { toasts } from '$lib/toasts.svelte.js';
 	import { i18n } from '$lib/i18n.svelte.js';
 	import { theme } from '$lib/theme.svelte.js';
+	import { page } from '$app/stores';
 
 	let { children } = $props();
 
 	let hideNavbar = $state(false);
 	let lastScrollY = $state(0);
+
+	// Hide the top Navbar on dashboard pages — they use the sidebar instead
+	let isDashboardRoute = $derived(
+		$page.url.pathname.startsWith('/retailer') ||
+		$page.url.pathname.startsWith('/wholesaler') ||
+		$page.url.pathname.startsWith('/admin')
+	);
 
 	function handleScroll() {
 		const currentScrollY = window.scrollY;
@@ -45,7 +53,9 @@
 </svelte:head>
 
 <div class="min-h-screen bg-app-bg text-app-text flex flex-col transition-colors duration-200">
-	<Navbar hide={hideNavbar} />
+	{#if !isDashboardRoute}
+		<Navbar hide={hideNavbar} />
+	{/if}
 	<main class="flex-grow">
 		{@render children()}
 	</main>

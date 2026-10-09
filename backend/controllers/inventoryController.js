@@ -1,6 +1,7 @@
 import Inventory from '../models/Inventory.js';
 import Order from '../models/Order.js';
 import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
+import { safeExactRegex } from '../utils/regex.js';
 
 export const getMyInventory = async (req, res) => {
   try {
@@ -20,7 +21,7 @@ export const addInventoryItem = async (req, res) => {
   }
 
   try {
-    const existing = await Inventory.findOne({ wholesaler: req.user._id, productName: { $regex: new RegExp(`^${productName.trim()}$`, 'i') } });
+    const existing = await Inventory.findOne({ wholesaler: req.user._id, productName: safeExactRegex(productName) });
     if (existing) {
       return res.status(400).json({ success: false, message: 'Item already exists in your inventory. Update it instead.' });
     }
@@ -102,8 +103,8 @@ export const getInventoryPredictions = async (req, res) => {
           wholesaler: req.user._id,
           status: { $in: ['shipped', 'out_for_delivery', 'delivered'] },
           $or: [
-            { productName: { $regex: new RegExp(`^${item.productName.trim()}$`, 'i') } },
-            { 'items.productName': { $regex: new RegExp(`^${item.productName.trim()}$`, 'i') } },
+            { productName: safeExactRegex(item.productName) },
+            { 'items.productName': safeExactRegex(item.productName) },
           ],
         }).sort({ createdAt: 1 });
 

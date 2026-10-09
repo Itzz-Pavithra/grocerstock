@@ -11,6 +11,13 @@ import orderRoutes from './routes/orders.js';
 import inventoryRoutes from './routes/inventory.js';
 import wholesalerRoutes from './routes/wholesalers.js';
 import locationRoutes from './routes/location.js';
+import retailerInventoryRoutes from './routes/retailerInventory.js';
+import groupBuyRoutes from './routes/groupBuy.js';
+import analyticsRoutes from './routes/analytics.js';
+import { validateSecurityConfigAtStartup } from './config/security.js';
+
+// Validate JWT Secret & Security parameters at startup
+validateSecurityConfigAtStartup();
 
 const app = express();
 
@@ -22,6 +29,7 @@ const envFrontendUrls = (process.env.FRONTEND_URL || '')
 
 const allowedOrigins = [
   ...envFrontendUrls,
+  'https://grocerstock.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
@@ -34,11 +42,8 @@ app.use(
       // Allow requests with no origin (e.g. mobile apps, curl, same-origin serverless)
       if (!origin) return callback(null, true);
 
-      // Check if origin is explicitly in allowed list or is a Vercel preview/production deployment
-      const isAllowed =
-        allowedOrigins.includes(origin) ||
-        origin.endsWith('.vercel.app') ||
-        origin.includes('localhost');
+      // Check if origin is explicitly in allowed list (strict, no arbitrary wildcard preview domains)
+      const isAllowed = allowedOrigins.includes(origin) || origin.includes('localhost');
 
       if (isAllowed) {
         callback(null, true);
@@ -61,6 +66,10 @@ app.use('/api/responses', responseRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/retailer-inventory', retailerInventoryRoutes);
+app.use('/api/group-buy', groupBuyRoutes);
+app.use('/api/group-buys', groupBuyRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/wholesalers', wholesalerRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/directions', locationRoutes);
@@ -80,12 +89,12 @@ app.get('/', (req, res) => {
   res.send('GrocerStock — Local Stock Grocery Management System API is running...');
 });
 
-// 404 handler for unknown API routes (prevents Express returning HTML for JSON APIs)
+// 404 handler for unknown API routes
 app.use('/api', (req, res) => {
   res.status(404).json({ success: false, message: `API endpoint not found: ${req.method} ${req.originalUrl}` });
 });
 
-// Centralized Error Handling Middleware (4 params required for Express error middleware)
+// Centralized Error Handling Middleware
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   const statusCode = err.status || err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);

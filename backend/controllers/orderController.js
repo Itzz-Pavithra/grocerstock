@@ -3,6 +3,8 @@ import Inventory from '../models/Inventory.js';
 import Notification from '../models/Notification.js';
 import Retailer from '../models/Retailer.js';
 import Wholesaler from '../models/Wholesaler.js';
+import { safeExactRegex } from '../utils/regex.js';
+import { addDeliveredOrderToRetailerInventory } from './retailerInventoryController.js';
 
 export const getMyOrders = async (req, res) => {
   try {
@@ -84,13 +86,13 @@ export const updateOrderStatus = async (req, res) => {
       notes: notes || deliveryNotes || `Status updated from ${oldStatus} to ${status}`,
     });
 
-    // Deduct inventory ONCE when order reaches shipped, out_for_delivery, or delivered
+    // Deduct wholesaler inventory ONCE when order reaches shipped, out_for_delivery, or delivered
     if (!order.inventoryDeducted && ['shipped', 'out_for_delivery', 'delivered'].includes(status)) {
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
           const invItem = await Inventory.findOne({
             wholesaler: order.wholesaler,
-            productName: { $regex: new RegExp(`^${item.productName.trim()}$`, 'i') },
+            productName: safeExactRegex(item.productName),
           });
           if (invItem) {
             invItem.stockQuantity = Math.max(0, invItem.stockQuantity - item.quantity);
@@ -103,7 +105,7 @@ export const updateOrderStatus = async (req, res) => {
       } else {
         const invItem = await Inventory.findOne({
           wholesaler: order.wholesaler,
-          productName: { $regex: new RegExp(`^${order.productName.trim()}$`, 'i') },
+          productName: safeExactRegex(order.productName),
         });
 
         if (invItem) {
@@ -115,6 +117,16 @@ export const updateOrderStatus = async (req, res) => {
         }
       }
       order.inventoryDeducted = true;
+    }
+
+    // Update retailer inventory ONCE when order reaches delivered
+    if (status === 'delivered' && !order.retailerInventoryUpdated) {
+      try {
+        await addDeliveredOrderToRetailerInventory(order);
+        order.retailerInventoryUpdated = true;
+      } catch (retailerInvErr) {
+        console.error('Failed to sync delivered order with retailer inventory:', retailerInvErr.message);
+      }
     }
 
     await order.save();

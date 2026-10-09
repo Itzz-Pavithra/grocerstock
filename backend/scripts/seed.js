@@ -13,6 +13,9 @@ import Response from '../models/Response.js';
 import Order from '../models/Order.js';
 import Inventory from '../models/Inventory.js';
 import Notification from '../models/Notification.js';
+import RetailerInventory from '../models/RetailerInventory.js';
+import RetailSale from '../models/RetailSale.js';
+import GroupBuy from '../models/GroupBuy.js';
 import { ensureWholesalerInventory } from '../services/commonInventoryService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -144,6 +147,7 @@ const seedDB = async () => {
       categoriesSupplied: ['Pantry Staples', 'Dairy & Eggs', 'Beverages'],
       deliveryRadiusKm: 30,
       businessRegNo: 'GSTIN29ABCDE1234F1Z5',
+      businessVerification: { status: 'approved', reviewedAt: new Date() },
     });
 
     // Seed Wholesaler 2 (Kaveri Agro Distributors)
@@ -169,6 +173,7 @@ const seedDB = async () => {
       categoriesSupplied: ['Pantry Staples', 'Fruits & Vegetables', 'Canned & Packaged Goods'],
       deliveryRadiusKm: 40,
       businessRegNo: 'GSTIN29XYZAB5678C1Z2',
+      businessVerification: { status: 'approved', reviewedAt: new Date() },
     });
 
     console.log('✅ Users and business profiles seeded with locations.');
@@ -329,6 +334,158 @@ const seedDB = async () => {
       createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
     });
 
+    // Seed Retailer Inventory for Retailer 1
+    await RetailerInventory.deleteMany();
+    const retInv1 = await RetailerInventory.create({
+      retailer: retUser1._id,
+      productName: 'Sona Masoori Raw Rice',
+      category: 'Pantry Staples',
+      brand: 'Royal Harvest',
+      unit: 'kg',
+      stockQuantity: 75,
+      minStockThreshold: 20,
+      averageCostPrice: 51,
+      sellingPrice: 62,
+      lastRestockedAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
+      stockMovements: [
+        {
+          movementType: 'procurement_delivery',
+          quantityChange: 100,
+          balanceAfter: 100,
+          unitCost: 51,
+          notes: 'Delivered procurement order #1',
+          createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
+        },
+        {
+          movementType: 'retail_sale',
+          quantityChange: -25,
+          balanceAfter: 75,
+          unitCost: 51,
+          sellingPrice: 62,
+          notes: 'Walk-in retail customer sales',
+          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        },
+      ],
+    });
+
+    await RetailerInventory.create({
+      retailer: retUser1._id,
+      productName: 'Toor Dal Premium Unpolished',
+      category: 'Pantry Staples',
+      brand: 'Tata Sampann',
+      unit: 'kg',
+      stockQuantity: 12,
+      minStockThreshold: 15, // Low stock!
+      averageCostPrice: 140,
+      sellingPrice: 165,
+      lastRestockedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      stockMovements: [
+        {
+          movementType: 'initial_stock',
+          quantityChange: 30,
+          balanceAfter: 30,
+          unitCost: 140,
+          notes: 'Initial inventory stock',
+          createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        },
+        {
+          movementType: 'retail_sale',
+          quantityChange: -18,
+          balanceAfter: 12,
+          unitCost: 140,
+          sellingPrice: 165,
+          notes: 'Store retail sales',
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        },
+      ],
+    });
+
+    // Seed Retail Sales for Retailer 1
+    await RetailSale.deleteMany();
+    await RetailSale.create({
+      retailer: retUser1._id,
+      items: [
+        {
+          productName: 'Sona Masoori Raw Rice',
+          category: 'Pantry Staples',
+          unit: 'kg',
+          quantity: 25,
+          unitSellingPrice: 62,
+          unitCostPrice: 51,
+          totalRevenue: 1550,
+          totalCost: 1275,
+          grossProfit: 275,
+        },
+        {
+          productName: 'Toor Dal Premium Unpolished',
+          category: 'Pantry Staples',
+          unit: 'kg',
+          quantity: 18,
+          unitSellingPrice: 165,
+          unitCostPrice: 140,
+          totalRevenue: 2970,
+          totalCost: 2520,
+          grossProfit: 450,
+        },
+      ],
+      totalRevenue: 4520,
+      totalCost: 3795,
+      totalGrossProfit: 725,
+      paymentMethod: 'cash',
+      customerNote: 'Counter sales transactions',
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+
+    // Seed Hyperlocal Group Buy Campaign
+    await GroupBuy.deleteMany();
+    await GroupBuy.create({
+      title: 'Indiranagar & Brigade Rice Procurement Pool',
+      productName: 'Sona Masoori Raw Rice',
+      category: 'Pantry Staples',
+      brand: 'Royal Harvest',
+      unit: 'kg',
+      targetMinQuantity: 200,
+      currentCommittedQuantity: 120,
+      joiningDeadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      status: 'open',
+      creator: retUser1._id,
+      creatorStoreName: 'Metro Fresh Supermart',
+      city: 'Bengaluru',
+      latitude: 12.9716,
+      longitude: 77.5946,
+      participants: [
+        {
+          retailer: retUser1._id,
+          storeName: 'Metro Fresh Supermart',
+          committedQuantity: 70,
+          status: 'committed',
+        },
+        {
+          retailer: retUser2._id,
+          storeName: 'Green Valley Daily Needs',
+          committedQuantity: 50,
+          status: 'committed',
+        },
+      ],
+      discountTiers: [
+        { minQuantity: 100, indicativeDiscountPercent: 4, estimatedPricePerUnit: 50 },
+        { minQuantity: 200, indicativeDiscountPercent: 8, estimatedPricePerUnit: 48 },
+        { minQuantity: 500, indicativeDiscountPercent: 12, estimatedPricePerUnit: 46 },
+      ],
+      supplierOffers: [
+        {
+          wholesaler: wholeUser1._id,
+          companyName: 'Apex Wholesale Mart & Logistics',
+          offeredPricePerUnit: 48.50,
+          minRequiredQuantity: 150,
+          deliveryEstimate: '24 hours',
+          status: 'pending',
+          createdAt: new Date(),
+        },
+      ],
+    });
+
+    console.log('✅ Retailer inventory, sales records, and group buy campaign seeded.');
     console.log('🎉 Seeding successfully completed!');
     process.exit(0);
   } catch (error) {

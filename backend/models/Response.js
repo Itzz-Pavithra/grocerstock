@@ -62,5 +62,8 @@ const responseSchema = new mongoose.Schema(
   }
 );
 
+responseSchema.index({ stockRequest: 1, status: 1 });
+responseSchema.index({ wholesaler: 1, createdAt: -1 });
+
 const Response = mongoose.models.Response || mongoose.model('Response', responseSchema);
 export default Response;

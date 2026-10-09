@@ -3,6 +3,9 @@ import {
   getStats,
   getUsers,
   toggleUserStatus,
+  getBusinessVerifications,
+  approveBusinessVerification,
+  rejectBusinessVerification,
   getCategories,
   createCategory,
   updateCategory,
@@ -10,7 +13,7 @@ import {
   getProducts,
   createProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
 } from '../controllers/adminController.js';
 import { protect, restrictTo } from '../middleware/auth.js';
 
@@ -23,11 +26,18 @@ router.get('/stats', getStats);
 router.get('/users', getUsers);
 router.put('/users/:id/status', toggleUserStatus);
 
+// Business Verification Workflow
+router.get('/verifications', getBusinessVerifications);
+router.put('/verifications/:id/approve', approveBusinessVerification);
+router.put('/verifications/:id/reject', rejectBusinessVerification);
+
+// Category Management
 router.get('/categories', getCategories);
 router.post('/categories', createCategory);
 router.put('/categories/:id', updateCategory);
 router.delete('/categories/:id', deleteCategory);
 
+// Product Management
 router.get('/products', getProducts);
 router.post('/products', createProduct);
 router.put('/products/:id', updateProduct);

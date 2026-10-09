@@ -75,6 +75,27 @@ const wholesalerSchema = new mongoose.Schema(
       required: [true, 'Business registration number is required'],
       trim: true,
     },
+    businessVerification: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+      },
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      reviewedAt: {
+        type: Date,
+        default: null,
+      },
+      rejectionReason: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+    },
   },
   {
     timestamps: true,
@@ -82,6 +103,7 @@ const wholesalerSchema = new mongoose.Schema(
 );
 
 wholesalerSchema.index({ location: '2dsphere' });
+wholesalerSchema.index({ 'businessVerification.status': 1 });
 
 const Wholesaler = mongoose.models.Wholesaler || mongoose.model('Wholesaler', wholesalerSchema);
 export default Wholesaler;
