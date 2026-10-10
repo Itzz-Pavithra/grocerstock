@@ -262,7 +262,19 @@
     profitabilityLoading = true;
     try {
       const res = await api.get('/analytics/retailer-profitability');
-      profitabilityData = res;
+      if (res && res.metrics) {
+        profitabilityData = {
+          ...res,
+          totalProcurementSpend: res.metrics.totalProcurementSpend ?? 0,
+          totalOrders: res.metrics.totalOrdersCount ?? res.metrics.deliveredOrdersCount ?? 0,
+          totalSalesRevenue: res.metrics.salesRevenue ?? 0,
+          grossProfit: res.metrics.grossProfit ?? 0,
+          grossMarginPercent: res.metrics.grossProfitMargin ?? 0,
+          spendByCategory: res.categoryBreakdown?.map(c => ({ category: c.category, spend: c.cost })) || []
+        };
+      } else {
+        profitabilityData = res;
+      }
     } catch (err) {
       console.error('Failed to load profitability data:', err);
     } finally {
