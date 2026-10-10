@@ -7,7 +7,8 @@
     getMapLibre, 
     getEffectiveMapStyle, 
     createMapTransformRequest, 
-    cleanOsmRasterStyle 
+    cleanOsmRasterStyle,
+    esriWorldStreetStyle
   } from '$lib/maplibre.js';
   import { 
     MapPin, 
@@ -40,6 +41,7 @@
   let mapInstance = null;
   let markers = [];
   let userMarker = null;
+  let resizeObserver = null;
 
   // Filter & Search States
   let searchQuery = $state('');
@@ -299,11 +301,23 @@
       mapInstance.once('idle', markLoaded);
       setTimeout(markLoaded, 600);
 
+      // Responsive container resize observer
+      if (typeof ResizeObserver !== 'undefined' && mapContainer && !resizeObserver) {
+        resizeObserver = new ResizeObserver(() => {
+          if (mapInstance) {
+            mapInstance.resize();
+          }
+        });
+        resizeObserver.observe(mapContainer);
+      }
+
+      let fallbackApplied = false;
       mapInstance.on('error', (e) => {
         console.warn('MapLibre error:', e);
-        if (mapInstance && mapInstance.setStyle) {
+        if (!fallbackApplied && mapInstance && mapInstance.setStyle) {
+          fallbackApplied = true;
           try {
-            mapInstance.setStyle(cleanOsmRasterStyle);
+            mapInstance.setStyle(esriWorldStreetStyle);
           } catch {
             mapError = 'Map tiles could not be loaded.';
           }
@@ -561,6 +575,10 @@
 
   onDestroy(() => {
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
     if (mapInstance) {
       mapInstance.remove();
       mapInstance = null;

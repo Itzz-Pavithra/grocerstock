@@ -81,7 +81,9 @@ export function getMapTilerApiKey() {
 
 /**
  * Clean OpenStreetMap standard raster tiles specification.
- * 100% free, reliable, no API key required, and ZERO watermarks.
+ * 100% free, reliable, no API key required, zero watermarks, and full CORS support.
+ * Uses high-availability OpenStreetMap Deutschland servers (tile.openstreetmap.de)
+ * which do not block browser web applications.
  */
 export const cleanOsmRasterStyle = {
   version: 8,
@@ -89,9 +91,9 @@ export const cleanOsmRasterStyle = {
     'osm-standard': {
       type: 'raster',
       tiles: [
-        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.tile.openstreetmap.de/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.de/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.de/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
       attribution:
@@ -103,6 +105,34 @@ export const cleanOsmRasterStyle = {
       id: 'osm-standard-tiles',
       type: 'raster',
       source: 'osm-standard',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
+
+/**
+ * Enterprise Esri World Street Map raster tiles specification.
+ * 100% free, reliable, zero API key required, full geographic details, and global CDN.
+ */
+export const esriWorldStreetStyle = {
+  version: 8,
+  sources: {
+    'esri-streets': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution:
+        'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, METI, TomTom',
+    },
+  },
+  layers: [
+    {
+      id: 'esri-streets-tiles',
+      type: 'raster',
+      source: 'esri-streets',
       minzoom: 0,
       maxzoom: 19,
     },

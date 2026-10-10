@@ -12,7 +12,8 @@
     getMapLibre, 
     getEffectiveMapStyle, 
     createMapTransformRequest, 
-    cleanOsmRasterStyle 
+    cleanOsmRasterStyle,
+    esriWorldStreetStyle
   } from '$lib/maplibre.js';
   import {
     LayoutDashboard,
@@ -71,6 +72,7 @@
   let locMapMarker = null;
   let locMapLoading = $state(false);
   let locMapError = $state(null);
+  let locResizeObserver = null;
 
   // Data States
   let orders = $state([]);
@@ -452,11 +454,23 @@
       locMapInstance.once('idle', markLoaded);
       setTimeout(markLoaded, 600);
 
+      // Responsive container resize observer
+      if (typeof ResizeObserver !== 'undefined' && locMapContainer && !locResizeObserver) {
+        locResizeObserver = new ResizeObserver(() => {
+          if (locMapInstance) {
+            locMapInstance.resize();
+          }
+        });
+        locResizeObserver.observe(locMapContainer);
+      }
+
+      let fallbackApplied = false;
       locMapInstance.on('error', (e) => {
         console.warn('MapLibre runtime error:', e);
-        if (locMapInstance?.setStyle) {
+        if (!fallbackApplied && locMapInstance?.setStyle) {
+          fallbackApplied = true;
           try {
-            locMapInstance.setStyle(cleanOsmRasterStyle);
+            locMapInstance.setStyle(esriWorldStreetStyle);
           } catch {
             // Keep style
           }
@@ -661,6 +675,10 @@
 
   onDestroy(() => {
     if (locDebounceTimer) clearTimeout(locDebounceTimer);
+    if (locResizeObserver) {
+      locResizeObserver.disconnect();
+      locResizeObserver = null;
+    }
     if (locMapInstance) {
       locMapInstance.remove();
       locMapInstance = null;
