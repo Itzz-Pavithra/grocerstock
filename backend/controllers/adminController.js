@@ -509,6 +509,136 @@ export const deleteCategory = async (req, res) => {
 };
 
 /**
+ * Standard Product Catalog (Used by Common and Retailer procurement routes)
+ */
+export const getProducts = async (req, res) => {
+  try {
+    const query = {};
+    if (req.query.category) {
+      query.category = req.query.category;
+    }
+    if (req.query.search) {
+      query.name = safeSubstringRegex(req.query.search);
+    }
+    const products = await Product.find(query).populate('category').sort({ name: 1 });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const createProduct = async (req, res) => {
+  const { name, categoryId, brand, defaultUnit } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Product name is required' });
+  }
+  if (!categoryId) {
+    return res.status(400).json({ success: false, message: 'Category ID is required' });
+  }
+
+  try {
+    const productExists = await Product.findOne({ name: safeExactRegex(name) });
+    if (productExists) {
+      return res.status(400).json({ success: false, message: `Product "${name}" already exists` });
+    }
+
+    const product = await Product.create({
+      name: name.trim(),
+      category: categoryId,
+      brand: (brand || '').trim(),
+      defaultUnit: (defaultUnit || 'kg').trim(),
+    });
+
+    const populated = await Product.findById(product._id).populate('category');
+
+    if (req.user) {
+      await logAdminAction({
+        action: 'PRODUCT_CREATE',
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        targetModel: 'Product',
+        targetId: product._id,
+        details: `Created new catalog product "${product.name}"`,
+      });
+    }
+
+    res.status(201).json(populated);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const updateProduct = async (req, res) => {
+  const { name, categoryId, brand, defaultUnit } = req.body;
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    if (name && name.trim()) {
+      const duplicate = await Product.findOne({
+        _id: { $ne: product._id },
+        name: safeExactRegex(name.trim()),
+      });
+      if (duplicate) {
+        return res.status(400).json({ success: false, message: `Another product named "${name}" already exists` });
+      }
+      product.name = name.trim();
+    }
+
+    if (categoryId) product.category = categoryId;
+    if (brand !== undefined) product.brand = brand.trim();
+    if (defaultUnit !== undefined) product.defaultUnit = defaultUnit.trim();
+
+    await product.save();
+    const populated = await Product.findById(product._id).populate('category');
+
+    if (req.user) {
+      await logAdminAction({
+        action: 'PRODUCT_UPDATE',
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        targetModel: 'Product',
+        targetId: product._id,
+        details: `Updated catalog product "${product.name}"`,
+      });
+    }
+
+    res.json(populated);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const deletedName = product.name;
+    await Product.findByIdAndDelete(req.params.id);
+
+    if (req.user) {
+      await logAdminAction({
+        action: 'PRODUCT_DELETE',
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        targetModel: 'Product',
+        targetId: req.params.id,
+        details: `Deleted catalog product "${deletedName}"`,
+      });
+    }
+
+    res.json({ success: true, message: `Product "${deletedName}" removed successfully` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * MODULE 6: Orders & Disputes
  */
 export const getAdminOrders = async (req, res) => {

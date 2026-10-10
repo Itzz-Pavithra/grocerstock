@@ -223,9 +223,9 @@
   async function loadCatalogs() {
     try {
       const catRes = await api.get('/common/categories');
-      categories = catRes || [];
+      categories = Array.isArray(catRes) ? catRes : (catRes?.categories || []);
       const prodRes = await api.get('/common/products');
-      products = prodRes || [];
+      products = Array.isArray(prodRes) ? prodRes : (prodRes?.products || []);
     } catch (err) {
       console.error('Failed to load catalogs:', err);
     }
