@@ -1,2 +1,3 @@
-2026/10/10-09:22:53.536 3370 Creating DB C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\chrome_capture_profile\Default\Local Storage\leveldb since it was missing.
-2026/10/10-09:22:53.620 3370 Reusing MANIFEST C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\chrome_capture_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/10-10:38:12.005 58c4 Reusing MANIFEST C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\chrome_capture_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/10-10:38:12.011 58c4 Recovering log #3
+2026/10/10-10:38:12.024 58c4 Reusing old log C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\chrome_capture_profile\Default\Local Storage\leveldb/000003.log 

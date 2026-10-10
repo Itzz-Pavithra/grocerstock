@@ -140,6 +140,34 @@ export const esriWorldStreetStyle = {
 };
 
 /**
+ * Enterprise Esri World Imagery (Satellite) raster tiles specification.
+ * 100% free, reliable, zero API key required, high-resolution global satellite view.
+ */
+export const esriSatelliteStyle = {
+  version: 8,
+  sources: {
+    'esri-satellite': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution:
+        'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, USDA FSA, USGS, Aerogrid, IGN, IGP',
+    },
+  },
+  layers: [
+    {
+      id: 'esri-satellite-tiles',
+      type: 'raster',
+      source: 'esri-satellite',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
+
+/**
  * Creates authenticated CARTO Voyager raster tiles specification.
  * If apiKey is provided, it is appended to all tile requests to eliminate watermarks.
  */
@@ -177,7 +205,7 @@ export function createCartoRasterStyle(apiKey) {
  * Resolves the effective MapLibre style:
  * 1. If VITE_CARTO_API_KEY is configured, uses CARTO Voyager with the key.
  * 2. If VITE_MAPTILER_API_KEY is configured, uses MapTiler Streets v2.
- * 3. Fallback: Clean OpenStreetMap standard raster tiles (zero watermark, no key required).
+ * 3. Default: Enterprise Esri World Street Map (high-res streets, zero watermark, 100% free, no key required).
  */
 export function getEffectiveMapStyle() {
   const cartoKey = getCartoApiKey();
@@ -191,7 +219,7 @@ export function getEffectiveMapStyle() {
     return `https://api.maptiler.com/maps/streets-v2/style.json?key=${encodeURIComponent(mapTilerKey)}`;
   }
 
-  return cleanOsmRasterStyle;
+  return esriWorldStreetStyle;
 }
 
 /**

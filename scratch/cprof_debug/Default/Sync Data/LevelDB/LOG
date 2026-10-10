@@ -1,2 +1,3 @@
-2026/10/10-09:28:29.748 27d0 Creating DB C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\cprof_debug\Default\Sync Data\LevelDB since it was missing.
-2026/10/10-09:28:29.760 27d0 Reusing MANIFEST C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\cprof_debug\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/10/10-10:26:29.505 4884 Reusing MANIFEST C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\cprof_debug\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/10/10-10:26:29.505 4884 Recovering log #3
+2026/10/10-10:26:29.553 4884 Reusing old log C:\Users\pavit\OneDrive\Desktop\grocerstock\scratch\cprof_debug\Default\Sync Data\LevelDB/000003.log 
