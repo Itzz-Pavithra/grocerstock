@@ -1070,11 +1070,11 @@
                         </div>
                         <div class="grid grid-cols-2 gap-2 text-xs bg-app-card p-3 rounded-xl border border-app-border/60">
                           <div><span class="text-[11px] text-app-textMuted block">Current Stock</span><span class="font-bold">{pred.currentStock} {pred.unit}</span></div>
-                          <div><span class="text-[11px] text-app-textMuted block">Daily Usage</span><span class="font-bold">{pred.avgDailyConsumption?.toFixed(2) || 'N/A'} {pred.unit}/day</span></div>
+                          <div><span class="text-[11px] text-app-textMuted block">Daily Usage</span><span class="font-bold">{pred.dailyConsumption?.toFixed(2) || pred.avgDailyConsumption?.toFixed(2) || 'N/A'} {pred.unit}/day</span></div>
                           <div><span class="text-[11px] text-app-textMuted block">Reorder Point</span><span class="font-bold text-[#D4A72C]">{pred.reorderPoint} {pred.unit}</span></div>
-                          <div><span class="text-[11px] text-app-textMuted block">Lead Time</span><span class="font-bold">{pred.supplierLeadTimeDays || 3} days</span></div>
+                          <div><span class="text-[11px] text-app-textMuted block">Lead Time</span><span class="font-bold">{pred.leadTimeDays ?? pred.supplierLeadTimeDays ?? 3} days</span></div>
                         </div>
-                        <p class="text-[11px] text-rose-600 font-semibold">{pred.reason || 'Stock below reorder point'}</p>
+                        <p class="text-[11px] text-rose-600 font-semibold">{pred.riskReason || pred.reason || 'Stock below reorder point'}</p>
                         <button onclick={() => quickReorder(pred)} class="w-full py-2 text-xs font-bold rounded-xl bg-[#D4A72C] hover:bg-amber-600 text-[#202124] transition">⚡ Create Restock Request</button>
                       </div>
                     {/each}
