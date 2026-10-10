@@ -8,7 +8,8 @@
     getEffectiveMapStyle, 
     createMapTransformRequest, 
     cleanOsmRasterStyle,
-    esriWorldStreetStyle
+    esriWorldStreetStyle,
+    esriSatelliteStyle
   } from '$lib/maplibre.js';
   import { 
     MapPin, 
@@ -28,7 +29,9 @@
     Crosshair,
     X,
     Loader2,
-    Package
+    Package,
+    Layers,
+    Globe
   } from 'lucide-svelte';
 
   let { 
@@ -80,6 +83,9 @@
   let currentLat = $state(11.6643);
   let currentLng = $state(78.1460);
 
+  // Map visual layer (streets, satellite, osm)
+  let currentLayer = $state('streets');
+
   let expandedStockWholesalerId = $state(null);
 
   $effect(() => {
@@ -111,15 +117,25 @@
       wholesalers = res.wholesalers || [];
       updateMapMarkers();
 
-      // Automatically fit bounds so all eligible wholesalers appear on the map
+      // Automatically fit bounds safely once map style is fully loaded
       if (wholesalers.length > 0 && mapInstance && browser) {
         getMapLibre().then(maplibregl => {
-          const bounds = new maplibregl.LngLatBounds();
-          if (currentLat && currentLng) bounds.extend([currentLng, currentLat]);
-          wholesalers.forEach(w => {
-            if (w.longitude && w.latitude) bounds.extend([w.longitude, w.latitude]);
-          });
-          mapInstance.fitBounds(bounds, { padding: 60, maxZoom: 13 });
+          if (!mapInstance) return;
+          const performFit = () => {
+            if (!mapInstance) return;
+            const bounds = new maplibregl.LngLatBounds();
+            if (currentLat && currentLng) bounds.extend([currentLng, currentLat]);
+            wholesalers.forEach(w => {
+              if (w.longitude && w.latitude) bounds.extend([w.longitude, w.latitude]);
+            });
+            mapInstance.fitBounds(bounds, { padding: 60, maxZoom: 13 });
+          };
+
+          if (mapInstance.isStyleLoaded && mapInstance.isStyleLoaded()) {
+            performFit();
+          } else {
+            mapInstance.once('load', performFit);
+          }
         }).catch(() => {});
       }
     } catch (err) {
@@ -252,6 +268,7 @@
   }
 
   async function initMap() {
+    await new Promise(r => setTimeout(r, 120));
     if (!browser || !mapContainer) {
       mapLoading = false;
       return;
@@ -259,7 +276,7 @@
 
     if (mapInstance) {
       mapLoading = false;
-      mapInstance.resize();
+      setTimeout(() => mapInstance?.resize(), 60);
       return;
     }
 
@@ -268,13 +285,12 @@
 
     try {
       const maplibregl = await getMapLibre();
-
-      const mapStyle = getEffectiveMapStyle();
+      const style = getLayerStyle(currentLayer);
       const transformRequest = createMapTransformRequest();
 
       mapInstance = new maplibregl.Map({
         container: mapContainer,
-        style: mapStyle,
+        style,
         center: [currentLng, currentLat],
         zoom: 12,
         attributionControl: false,
@@ -294,12 +310,14 @@
         }
         renderUserMarker();
         updateMapMarkers();
+        setTimeout(() => mapInstance?.resize(), 100);
+        setTimeout(() => mapInstance?.resize(), 400);
       };
 
       mapInstance.once('load', markLoaded);
       mapInstance.once('style.load', markLoaded);
       mapInstance.once('idle', markLoaded);
-      setTimeout(markLoaded, 600);
+      setTimeout(markLoaded, 800);
 
       // Responsive container resize observer
       if (typeof ResizeObserver !== 'undefined' && mapContainer && !resizeObserver) {
@@ -311,22 +329,16 @@
         resizeObserver.observe(mapContainer);
       }
 
-      let fallbackApplied = false;
+      // Safe error listener - ignore benign aborted tile requests
       mapInstance.on('error', (e) => {
-        console.warn('MapLibre error:', e);
-        if (!fallbackApplied && mapInstance && mapInstance.setStyle) {
-          fallbackApplied = true;
-          try {
-            mapInstance.setStyle(esriWorldStreetStyle);
-          } catch {
-            mapError = 'Map tiles could not be loaded.';
-          }
+        if (!e || !e.error || e.error.status === 0 || e.error.message?.includes('aborted')) {
+          return;
         }
+        console.warn('MapLibre runtime error:', e);
       });
 
       // Allow retailer to click on map to reposition search center
       mapInstance.on('click', async (e) => {
-        // Ignore if clicking on a marker
         if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.mapboxgl-marker, .maplibregl-marker')) {
           return;
         }
@@ -356,6 +368,25 @@
     }
   }
 
+  function getLayerStyle(layer) {
+    if (layer === 'satellite') return esriSatelliteStyle;
+    if (layer === 'osm') return cleanOsmRasterStyle;
+    return esriWorldStreetStyle;
+  }
+
+  function switchMapLayer(layer) {
+    if (currentLayer === layer || !mapInstance) return;
+    currentLayer = layer;
+    const style = getLayerStyle(layer);
+    mapInstance.setStyle(style);
+    mapInstance.once('style.load', () => {
+      renderUserMarker();
+      updateMapMarkers();
+      if (activeRoute) renderRouteLine();
+      mapInstance?.resize();
+    });
+  }
+
   async function renderUserMarker() {
     if (!mapInstance || !browser) return;
     if (userMarker) userMarker.remove();
@@ -364,16 +395,24 @@
       const maplibregl = await getMapLibre();
 
       const el = document.createElement('div');
-      el.className = 'user-pin flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg text-white';
-      el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+      el.className = 'user-pin cursor-pointer transform hover:scale-110 transition-transform duration-200';
+      el.innerHTML = `
+        <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px;">
+          <div style="position: absolute; inset: 0; border-radius: 50%; background: rgba(37, 99, 235, 0.35); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="position: relative; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border: 2.5px solid white; box-shadow: 0 4px 14px rgba(29, 78, 216, 0.5); display: flex; align-items: center; justify-content: center; color: white;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+        </div>
+      `;
 
       userMarker = new maplibregl.Marker({ element: el })
         .setLngLat([currentLng, currentLat])
         .setPopup(
-          new maplibregl.Popup({ offset: 25 }).setHTML(`
-            <div style="font-family: inherit; padding: 4px;">
-              <div style="font-weight: 700; color: #1e40af;">📍 Your Search Center</div>
-              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${locationLabel}</div>
+          new maplibregl.Popup({ offset: 25, closeButton: false }).setHTML(`
+            <div style="font-family: inherit; padding: 6px 8px; min-width: 190px;">
+              <div style="font-size: 11px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">📍 Your Search Center</div>
+              <div style="font-size: 12px; font-weight: 700; color: #0f172a; line-height: 1.3;">${locationLabel}</div>
+              <div style="font-size: 10px; color: #64748b; margin-top: 4px; font-family: monospace;">${currentLat.toFixed(5)}, ${currentLng.toFixed(5)}</div>
             </div>
           `)
         )
@@ -396,46 +435,60 @@
       wholesalers.forEach((w) => {
         if (w.longitude && w.latitude) {
           const el = document.createElement('div');
-          el.className = 'wholesaler-pin cursor-pointer transform hover:scale-110 transition-transform duration-150';
+          el.className = 'wholesaler-pin cursor-pointer group transform hover:scale-115 transition-all duration-200';
+          
+          const distanceTag = w.distanceKm !== null ? `${w.distanceKm} km` : '';
+          
           el.innerHTML = `
-            <div style="background-color: #D4A72C; color: #202124; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.08);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+              ${distanceTag ? `
+                <div style="margin-bottom: 3px; padding: 2px 7px; border-radius: 9999px; background: rgba(15, 23, 42, 0.92); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5); font-size: 10px; font-weight: 800; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); white-space: nowrap; letter-spacing: 0.02em;">
+                  ${distanceTag}
+                </div>
+              ` : ''}
+              <div style="position: relative; width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #fbbf24, #d97706); display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 4px 14px rgba(217, 119, 6, 0.5); color: #1e293b;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              </div>
             </div>
           `;
 
-          const distanceTag = w.distanceKm !== null ? `<b>${w.distanceKm} km</b> away` : '';
+          const distanceTagPopup = w.distanceKm !== null ? `<b>${w.distanceKm} km</b> away` : '';
           const deliveryStatusHtml = w.deliveryStatus
-            ? `<div style="font-size: 11px; font-weight: 600; color: ${w.isDeliveryAvailable ? '#047857' : '#b45309'}; margin-bottom: 4px;">
-                ${w.isDeliveryAvailable ? '✓ Delivery Available' : '⚠ Outside Delivery Area'} (${w.deliveryRadiusKm || 25} km radius)
+            ? `<div style="font-size: 11px; font-weight: 700; color: ${w.isDeliveryAvailable ? '#059669' : '#d97706'}; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+                <span>${w.isDeliveryAvailable ? '✓ Delivery Available' : '⚠ Outside Radius'}</span>
+                <span style="color: #64748b; font-weight: normal;">(${w.deliveryRadiusKm || 25} km)</span>
                </div>`
             : '';
 
           const stockHtml = (w.availableStock && w.availableStock.length > 0)
-            ? `<div style="font-size: 11px; color: #334155; margin-top: 6px; padding-top: 5px; border-top: 1px dashed #cbd5e1;">
-                <b style="color: #0f172a;">Live Stock:</b>
-                <div style="margin-top: 2px; color: #475569;">
-                  ${w.availableStock.slice(0, 3).map(s => `${s.productName} - ${s.quantity} ${s.unit}`).join('<br/>')}
-                  ${w.availableStock.length > 3 ? `<span style="font-size: 10px; color: #94a3b8;">+${w.availableStock.length - 3} more</span>` : ''}
+            ? `<div style="font-size: 11px; color: #334155; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+                <div style="font-weight: 700; color: #0f172a; margin-bottom: 3px;">📦 Live Stock (${w.availableStock.length}):</div>
+                <div style="display: flex; flex-direction: column; gap: 2px; color: #475569;">
+                  ${w.availableStock.slice(0, 3).map(s => `<div style="display: flex; justify-content: space-between;"><span>${s.productName}</span><b>${s.quantity} ${s.unit}</b></div>`).join('')}
+                  ${w.availableStock.length > 3 ? `<div style="font-size: 10px; color: #d97706; font-weight: 600;">+${w.availableStock.length - 3} more items</div>` : ''}
                 </div>
                </div>`
             : '';
 
           const popupContent = `
-            <div style="font-family: inherit; min-width: 210px; padding: 6px;">
-              <div style="font-weight: 700; font-size: 14px; color: #1e293b; margin-bottom: 2px;">${w.companyName}</div>
-              <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">📍 ${w.address || ''}${w.city ? `, ${w.city}` : ''}</div>
-              ${distanceTag ? `<div style="font-size: 11px; color: #D4A72C; font-weight: 700; margin-bottom: 4px;">🚗 ${distanceTag}</div>` : ''}
+            <div style="font-family: inherit; min-width: 220px; padding: 6px 8px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 3px;">
+                <div style="font-weight: 800; font-size: 14px; color: #0f172a;">${w.companyName}</div>
+                <span style="font-size: 10px; background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; padding: 1px 6px; border-radius: 9999px; font-weight: 700;">Verified</span>
+              </div>
+              <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.3;">📍 ${w.address || ''}${w.city ? `, ${w.city}` : ''}</div>
+              ${distanceTagPopup ? `<div style="font-size: 11px; color: #d97706; font-weight: 800; margin-bottom: 4px;">🚗 ${distanceTagPopup}</div>` : ''}
               ${deliveryStatusHtml}
-              <div style="font-size: 11px; color: #047857; font-weight: 600; margin-bottom: 4px;">
-                ✓ Fulfillment: ${w.performance?.fulfillmentRate || '98%'} (${w.performance?.completedOrders || 0} orders)
+              <div style="font-size: 11px; color: #059669; font-weight: 700; margin-bottom: 4px;">
+                ★ Fulfillment: ${w.performance?.fulfillmentRate || '98%'} (${w.performance?.completedOrders || 0} orders)
               </div>
               ${stockHtml}
-              <div style="display: flex; gap: 6px; margin-top: 8px;">
+              <div style="display: flex; gap: 6px; margin-top: 10px; padding-top: 6px; border-top: 1px solid #e2e8f0;">
                 <a 
                   href="https://www.google.com/maps/dir/?api=1&origin=${currentLat},${currentLng}&destination=${w.latitude},${w.longitude}" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  style="background: #202124; color: #F7F5EF; padding: 4px 10px; border-radius: 6px; font-size: 11px; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"
+                  style="flex: 1; text-align: center; background: #0f172a; color: #f8fafc; padding: 6px 10px; border-radius: 8px; font-size: 11px; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
                 >
                   Maps ↗
                 </a>
@@ -443,7 +496,7 @@
             </div>
           `;
 
-          const popup = new maplibregl.Popup({ offset: 25 }).setHTML(popupContent);
+          const popup = new maplibregl.Popup({ offset: 25, maxWidth: '280px' }).setHTML(popupContent);
 
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat([w.longitude, w.latitude])
@@ -470,6 +523,11 @@
         zoom: 14,
         essential: true,
       });
+      const match = markers.find(m => {
+        const lngLat = m.getLngLat();
+        return Math.abs(lngLat.lng - w.longitude) < 0.0001 && Math.abs(lngLat.lat - w.latitude) < 0.0001;
+      });
+      if (match) match.togglePopup();
     }
   }
 
@@ -508,31 +566,7 @@
       // Render route line on MapLibre
       if (mapInstance && browser) {
         const maplibregl = await getMapLibre();
-
-        // Add or update source
-        if (mapInstance.getSource('route-source')) {
-          mapInstance.getSource('route-source').setData(res.route);
-        } else {
-          mapInstance.addSource('route-source', {
-            type: 'geojson',
-            data: res.route,
-          });
-
-          mapInstance.addLayer({
-            id: 'route-line',
-            type: 'line',
-            source: 'route-source',
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': '#D4A72C',
-              'line-width': 5,
-              'line-opacity': 0.85,
-            },
-          });
-        }
+        renderRouteLine();
 
         // Fit map bounds to contain both origin and destination
         const bounds = new maplibregl.LngLatBounds();
@@ -555,16 +589,64 @@
     }
   }
 
+  function renderRouteLine() {
+    if (!mapInstance || !activeRoute || !activeRoute.routeGeometry) return;
+
+    const geojson = {
+      type: 'Feature',
+      properties: {},
+      geometry: activeRoute.routeGeometry
+    };
+
+    if (mapInstance.getSource('route-source')) {
+      mapInstance.getSource('route-source').setData(geojson);
+    } else {
+      mapInstance.addSource('route-source', {
+        type: 'geojson',
+        data: geojson,
+      });
+
+      // Outer neon casing
+      mapInstance.addLayer({
+        id: 'route-line-casing',
+        type: 'line',
+        source: 'route-source',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#F59E0B',
+          'line-width': 8,
+          'line-opacity': 0.45,
+        },
+      });
+
+      // Inner sharp core
+      mapInstance.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route-source',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#FBBF24',
+          'line-width': 4,
+          'line-opacity': 1,
+        },
+      });
+    }
+  }
+
   function clearRoute() {
     activeRoute = null;
     routeError = '';
     if (mapInstance) {
-      if (mapInstance.getLayer('route-line')) {
-        mapInstance.removeLayer('route-line');
-      }
-      if (mapInstance.getSource('route-source')) {
-        mapInstance.removeSource('route-source');
-      }
+      if (mapInstance.getLayer('route-line')) mapInstance.removeLayer('route-line');
+      if (mapInstance.getLayer('route-line-casing')) mapInstance.removeLayer('route-line-casing');
+      if (mapInstance.getSource('route-source')) mapInstance.removeSource('route-source');
     }
   }
 
@@ -765,44 +847,81 @@
   <!-- Map and Supplier Split View -->
   <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
     <!-- Map Container (7 columns) -->
-    <div class="lg:col-span-7 bg-app-card border border-app-border rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-[440px] relative">
+    <div class="lg:col-span-7 bg-app-card border border-app-border rounded-2xl overflow-hidden shadow-sm flex flex-col min-h-[460px] relative">
       {#if mapLoading}
-        <div class="absolute inset-0 bg-app-card/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
-          <div class="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mb-2"></div>
-          <p class="text-xs font-medium text-app-textMuted">Loading interactive map...</p>
+        <div class="absolute inset-0 bg-app-card/85 backdrop-blur-xs z-20 flex flex-col items-center justify-center">
+          <div class="w-9 h-9 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mb-2"></div>
+          <p class="text-xs font-semibold text-app-text">Loading interactive discovery map...</p>
+          <p class="text-[11px] text-app-textMuted mt-0.5">Fetching verified suppliers and road networks</p>
         </div>
       {/if}
 
       {#if mapError}
-        <div class="absolute inset-0 bg-app-card z-10 flex flex-col items-center justify-center p-6 text-center">
+        <div class="absolute inset-0 bg-app-card z-20 flex flex-col items-center justify-center p-6 text-center">
           <AlertCircle class="h-8 w-8 text-rose-500 mb-2" />
           <p class="text-sm font-semibold text-app-text mb-1">Map Notice</p>
           <p class="text-xs text-app-textMuted max-w-sm mb-3">{mapError}</p>
           <button
             type="button"
             onclick={() => initMap()}
-            class="px-3 py-1 text-xs font-semibold rounded-lg bg-brand-orange text-white"
+            class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-brand-orange text-white hover:bg-amber-600 transition"
           >
             Retry Map
           </button>
         </div>
       {/if}
 
-      <div bind:this={mapContainer} class="w-full h-full min-h-[460px] flex-1"></div>
+      <!-- Floating Map Header Controls (Layer Switcher & Recenter) -->
+      <div class="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5 bg-neutral-900/85 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg text-white">
+        <button
+          type="button"
+          onclick={() => switchMapLayer('streets')}
+          class="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all {currentLayer === 'streets' ? 'bg-[#D4A72C] text-[#202124] shadow' : 'text-neutral-300 hover:text-white hover:bg-white/10'}"
+          title="Street & Road Map view"
+        >
+          <Layers class="h-3 w-3" />
+          <span>Streets</span>
+        </button>
+        <button
+          type="button"
+          onclick={() => switchMapLayer('satellite')}
+          class="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all {currentLayer === 'satellite' ? 'bg-[#D4A72C] text-[#202124] shadow' : 'text-neutral-300 hover:text-white hover:bg-white/10'}"
+          title="High-resolution aerial satellite imagery"
+        >
+          <Globe class="h-3 w-3" />
+          <span>Satellite</span>
+        </button>
+        <div class="h-4 w-px bg-white/20 mx-0.5"></div>
+        <button
+          type="button"
+          onclick={() => {
+            if (mapInstance) {
+              mapInstance.flyTo({ center: [currentLng, currentLat], zoom: 13, essential: true });
+            }
+          }}
+          class="flex items-center space-x-1 px-2 py-1 rounded-lg text-xs font-semibold text-neutral-300 hover:text-white hover:bg-white/10 transition"
+          title="Recenter on your search point"
+        >
+          <Crosshair class="h-3 w-3 text-amber-400" />
+          <span class="hidden sm:inline">Recenter</span>
+        </button>
+      </div>
+
+      <div bind:this={mapContainer} class="w-full h-full min-h-[480px] flex-1"></div>
 
       <!-- Map Footer Bar -->
       <div class="p-2.5 bg-app-card border-t border-app-border text-[11px] text-app-textMuted flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center space-x-3">
-          <div class="flex items-center space-x-1">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-            <span>Your Search Point</span>
+          <div class="flex items-center space-x-1.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-600 ring-2 ring-blue-300 dark:ring-blue-900"></span>
+            <span class="font-medium text-app-text">Your Search Center</span>
           </div>
-          <div class="flex items-center space-x-1">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
-            <span>Wholesalers</span>
+          <div class="flex items-center space-x-1.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-brand-orange ring-2 ring-amber-300 dark:ring-amber-900"></span>
+            <span class="font-medium text-app-text">Wholesalers ({wholesalers.length})</span>
           </div>
         </div>
-        <span>Click map to relocate search center</span>
+        <span class="text-app-textMuted text-[10px]">Click map anywhere to relocate search center</span>
       </div>
     </div>
 
