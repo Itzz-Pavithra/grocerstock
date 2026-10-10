@@ -135,41 +135,18 @@ export const COMMON_100_CATALOGUE = [
 ];
 
 /**
- * Ensures that a given wholesaler has the standard 100-item common stock catalogue.
- * Initial quantity for each common stock item is set to 100.
- * If the wholesaler already has items, existing items are PRESERVED and NOT overwritten.
+ * INTENTIONALLY DISABLED — Auto-seeding of demo inventory has been removed.
+ *
+ * This function previously injected 135 catalogue items (qty=100) for every new
+ * wholesaler. It is now a deliberate no-op so that newly registered wholesalers
+ * start with an empty catalog and must enter their own real stock.
+ *
+ * The COMMON_100_CATALOGUE array above is kept as a reference used by the
+ * admin cleanup endpoint (DELETE /api/admin/purge-demo-inventory) to identify
+ * and remove any already-seeded demo records from the live database.
  */
-export async function ensureWholesalerInventory(wholesalerUserId) {
-  if (!wholesalerUserId) return;
-
-  try {
-    const existing = await Inventory.find({ wholesaler: wholesalerUserId }).select('productName');
-    const existingSet = new Set(existing.map((item) => (item.productName || '').toLowerCase().trim()));
-
-    const itemsToCreate = [];
-    for (const item of COMMON_100_CATALOGUE) {
-      const normalizedName = item.productName.toLowerCase().trim();
-      if (!existingSet.has(normalizedName)) {
-        itemsToCreate.push({
-          wholesaler: wholesalerUserId,
-          productName: item.productName,
-          category: item.category,
-          brand: item.brand || '',
-          unit: item.unit,
-          stockQuantity: 100, // Common initial 100 stock units
-          unitPrice: item.unitPrice,
-          minStockThreshold: 15,
-          leadTimeDays: 2,
-          reorderQuantity: 50,
-          isAvailable: true,
-        });
-      }
-    }
-
-    if (itemsToCreate.length > 0) {
-      await Inventory.insertMany(itemsToCreate, { ordered: false });
-    }
-  } catch (err) {
-    console.error(`Failed to ensure 100-stock inventory for wholesaler ${wholesalerUserId}:`, err.message);
-  }
+// eslint-disable-next-line no-unused-vars
+export async function ensureWholesalerInventory(_wholesalerUserId) {
+  // No-op: auto-seeding of demo catalogue items is disabled.
+  return;
 }

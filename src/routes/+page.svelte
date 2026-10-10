@@ -6,15 +6,15 @@
 <div class="relative bg-app-bg text-app-text transition-colors duration-200 animate-page-fade overflow-hidden">
   
   <!-- Ambient Moving Floating Orbs & Blurred Grocery Produce Photo -->
-  <div class="pointer-events-none absolute inset-0 overflow-hidden z-0">
-    <!-- Blurred Grocery Background Image (Visible in both Light and Dark mode) -->
+  <div class="pointer-events-none absolute inset-0 overflow-hidden z-0 bg-[#F7F5EF] dark:bg-[#202124] transition-colors duration-200">
+    <!-- Blurred Grocery Background Image (Softly visible in both Light and Dark mode) -->
     <div
-      class="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-25 dark:opacity-20 filter blur-[3px] scale-105 transition-opacity duration-300"
+      class="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40 dark:opacity-25 filter blur-[4px] scale-105 transition-all duration-300"
       style="background-image: url('/grocery_produce_bg.jpg')"
       aria-hidden="true"
     ></div>
-    <!-- Cream / Charcoal gradient overlay ensuring sharp text contrast -->
-    <div class="absolute inset-0 bg-gradient-to-b from-[#F7F5EF]/80 via-[#F7F5EF]/90 to-[#F7F5EF] dark:from-[#202124]/85 dark:via-[#18191B]/90 dark:to-[#18191B]"></div>
+    <!-- Cream / Charcoal gradient overlay ensuring sharp text contrast and rich branding -->
+    <div class="absolute inset-0 bg-gradient-to-b from-[#F7F5EF]/55 via-[#F7F5EF]/75 to-[#F7F5EF]/95 dark:from-[#202124]/85 dark:via-[#18191B]/90 dark:to-[#18191B]"></div>
 
     <div class="absolute -top-24 -left-20 w-96 h-96 rounded-full bg-[#D4A72C]/15 blur-3xl animate-orb-1"></div>
     <div class="absolute top-1/3 -right-24 w-[28rem] h-[28rem] rounded-full bg-[#B9DDE5]/25 blur-3xl animate-orb-2"></div>

@@ -88,8 +88,9 @@
     { id: 'verification', label: 'Business Verification', icon: ShieldCheck, badgeKey: 'pendingVerifications', highlight: true },
     { id: 'users', label: 'User Management', icon: Users },
     { id: 'categories', label: 'Categories Master', icon: Layers },
-    { id: 'products', label: 'Product Catalog', icon: Package },
-    { id: 'settings', label: 'System Settings', icon: Settings }
+    { id: 'settings', label: 'System Settings', icon: Settings },
+    { id: 'orders', label: 'Orders & Disputes', icon: Truck, badgeKey: 'activeDisputes' },
+    { id: 'audit', label: 'Audit Logs', icon: FileText }
   ];
 
   let navItems = $derived(
